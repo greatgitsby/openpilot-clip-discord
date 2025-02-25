@@ -57,10 +57,10 @@ class DiscordOpenpilotClipAsyncProcessor(OpenpilotClipAsyncProcessor):
             prev_status = worker.get_status()
             while not worker.is_complete():
                 if prev_status != worker.get_status():
-                    msg = worker.get_status() 
+                    status_msg = worker.get_status() 
                     if worker.get_status() == 'processing':
-                        msg = f'Processing (will take at least {worker.length_seconds / 60:.2f} minutes)'
-                    embed.set_field_at(1, name='Status', value=msg)
+                        status_msg = f'Processing (will take at least {worker.length_seconds / 60:.2f} minutes)'
+                    embed.set_field_at(1, name='Status', value=status_msg)
                     await msg.edit(embed=embed)
                 prev_status = worker.get_status()
                 await asyncio.sleep(3)
