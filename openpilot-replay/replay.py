@@ -45,7 +45,7 @@ class DiscordOpenpilotClipAsyncProcessor(OpenpilotClipAsyncProcessor):
             color=discord.Color.blue()
         )
         embed.add_field(name='Route', value=route_url, inline=False)
-        embed.add_field(name='Status', value='Starting job', inline=False)
+        embed.add_field(name='Status', value='Starting job (may take some time...)', inline=False)
         msg = await self.channel.send(embed=embed)
         
         try:
