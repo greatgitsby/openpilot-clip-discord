@@ -46,9 +46,11 @@ class DiscordOpenpilotClipAsyncProcessor(OpenpilotClipAsyncProcessor):
             worker.start()
 
             print('waiting')
+            prev_status = worker.get_status()
             while not worker.is_complete():
-                print(worker.get_status())
-                await msg.edit(content=worker.get_status())
+                if prev_status != worker.get_status():
+                    print(worker.get_status())
+                    await msg.edit(content=worker.get_status())
                 await asyncio.sleep(5)
                 worker.update()
 
