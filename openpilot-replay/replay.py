@@ -40,32 +40,65 @@ class DiscordOpenpilotClipAsyncProcessor(OpenpilotClipAsyncProcessor):
         self.channel = channel
     
     async def process(self, route_url: str):
-        msg = await self.channel.send(f'Processing {route_url}')
+        # Create an initial embed for processing status
+        embed = discord.Embed(
+            color=discord.Color.blue()
+        )
+        embed.add_field(name='Route', value=route_url, inline=False)
+        embed.add_field(name='Status', value='Starting job', inline=False)
+        msg = await self.channel.send(embed=embed)
+        
         try:
             worker = ReplicateClipWorker(route_url=route_url)
             worker.start()
 
-            print('waiting')
             prev_status = worker.get_status()
             while not worker.is_complete():
                 if prev_status != worker.get_status():
-                    print(worker.get_status())
-                    await msg.edit(content=worker.get_status())
-                await asyncio.sleep(5)
+                    embed.set_field_at(1, name='Status', value=worker.get_status().capitalize())
+                    await msg.edit(embed=embed)
+                prev_status = worker.get_status()
+                await asyncio.sleep(3)
                 worker.update()
 
             print(f'finished with status {worker.get_status()}')
             
             if worker.succeeded():
+                embed.set_field_at(1, name='Status', value='Uploading result')
+                await msg.edit(embed=embed)
                 discord_file = discord.File(worker.output(), 'output.mp4')
+                embed.color = discord.Color.green()
+                embed.set_field_at(1, name='Status', value='Finished')
                 await msg.add_files(discord_file)
-                await msg.edit(content='')
+                await msg.edit(embed=embed)
             else:
+                # Create an error embed
+                error_embed = discord.Embed(
+                    title="Processing Failed",
+                    description=f"```\n{worker.get_error()}\n```",
+                    color=discord.Color.red()
+                )
+                error_embed.add_field(name='Route', value=route_url)
+                await msg.edit(embed=error_embed)
                 raise ReplayException(f'replay failed:\n\n```\n{worker.get_error()}\n```')
         except ReplayException as e:
-            await msg.edit(content=str(e))
+            # Create an error embed with the specific exception
+            error_embed = discord.Embed(
+                title="Processing Error",
+                description=str(e),
+                color=discord.Color.red()
+            )
+            error_embed.add_field(name='Route', value=route_url)
+            await msg.edit(embed=error_embed)
         except Exception as e:
-            await msg.edit(content='unknown error, report to developers')
+            # Create a generic error embed
+            error_embed = discord.Embed(
+                title="Unknown Error",
+                description="An unknown error occurred. Please report to developers.",
+                color=discord.Color.dark_red()
+            )
+            error_embed.add_field(name='Route', value=route_url)
+            await msg.edit(embed=error_embed)
             print('unknown error', e)
 
 
@@ -149,72 +182,15 @@ class ReplicateClipWorker(OpenpilotClipAsyncWorker):
             "forwardUponWideH": 2.2,
         }
 
-
 # Function to create a progress bar
 def create_progress_bar(progress, total_steps, bar_length=10):
     filled_length = int(bar_length * (progress / total_steps))
     bar = '▓' * filled_length + '░' * (bar_length - filled_length)
     return bar
 
-# Simulate work that takes time
 async def do_work(url: str, channel: discord.TextChannel):
-    total_steps = 3
-    progress_bar_length = 10  # Length of the progress bar
     processor = DiscordOpenpilotClipAsyncProcessor(channel=channel)
-
     await processor.process(url)
-
-    # # Create an initial embed
-    # embed = discord.Embed(
-    #     title="Work in Progress",
-    #     description=f"Job {job.id}",
-    #     color=discord.Color.blue()
-    # )
-    # embed.add_field(name="Progress", value=create_progress_bar(0, total_steps, progress_bar_length), inline=False)
-    # embed.add_field(name="Status", value=job.status, inline=False)
-
-    # # Send the initial embed message
-    # progress_message = await channel.send(embed=embed)
-
-    # last_status = job.status
-    # while job.status not in ['succeeded', 'failed', 'canceled']:
-    #     print(f'status: {job.status}')
-    #     status = job.status
-
-    #     if last_status != status:
-    #         if status == 'starting':
-    #             n = 1
-    #         elif status == 'processing':
-    #             n = 2
-    #         embed.set_field_at(0, name="Progress", value=create_progress_bar(n, total_steps, progress_bar_length), inline=False)
-    #         embed.set_field_at(1, name="Status", value=job.status, inline=False)
-    #         await progress_message.edit(embed=embed)
-
-    #     last_status = job.status
-    #     await asyncio.sleep(5)
-    #     job.reload()
-
-    # if job.status == 'succeeded':
-    #     job.wait()
-    #     file_ptr = job.output
-
-    #     # Create a text file with results
-    #     with open("output.mp4", "wb") as file:
-    #         file.write(requests.get(file_ptr).content)
-
-    #     # Upload the text file
-    #     with open("output.mp4", "rb") as file:
-    #         d_f = discord.File(file, "output.mp4")
-    #         await progress_message.add_files(d_f)
-    #         await progress_message.edit(content='', embed=None)
-    # else:
-    #     # Notify the user the job has failed or was canceled.
-    #     embed.title = "Work Complete"
-    #     embed.description = "The work has been completed."
-    #     embed.set_field_at(0, name="Progress", value=create_progress_bar(total_steps, total_steps, progress_bar_length), inline=False)
-    #     embed.set_field_at(1, name="Status", value=job.status, inline=False)
-    #     await progress_message.edit(embed=embed)
-
 
 class MyClient(discord.Client):
     async def on_ready(self):
@@ -239,13 +215,3 @@ if __name__ == "__main__":
 
     client = MyClient(intents=intents)
     client.run(discord_token)
-
-    # download_segments(
-    #     '/tmp/data',
-    #     route.route,
-    #     10,
-    #     route.start_seconds,
-    #     route.length_seconds,
-    #     ['cameras'],
-    #     None,
-    # )
