@@ -144,7 +144,7 @@ class ReplicateClipWorker(OpenpilotClipAsyncWorker):
         version = model.versions.get(self.version)
 
         if not self.is_valid_route():
-            raise ReplayException(f'[Route]({self.route_url}) is not public (or invalid). Please mark public in connect and try again.')
+            raise ReplayException('The route is not public (or invalid). Please mark public in connect and try again.')
 
         job = replicate.predictions.create(
             version=version,
