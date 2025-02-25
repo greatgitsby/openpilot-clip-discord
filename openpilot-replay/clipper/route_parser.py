@@ -28,12 +28,12 @@ def parse_route_relative_url(
     parsed_url = urlparse(route_or_url)
     # Check the hostname
     if parsed_url.hostname != "connect.comma.ai":
-        raise ValueError("Invalid hostname in URL")
+        raise RouteParserException("Invalid hostname in URL")
     # Check the path
     path_parts = parsed_url.path.split("/")
     # There should be five parts
     if len(path_parts) != 5:
-        raise ValueError("Invalid path in URL")
+        raise RouteParserException("Invalid path in URL")
     # The first part should be the dongle ID
     dongle_id = path_parts[1]
     # The second part should be the route name in url slash format
@@ -77,13 +77,13 @@ def parse_absolute_time_url(
 
     # Check the hostname
     if parsed_url.hostname != "connect.comma.ai":
-        raise ValueError("Invalid hostname in URL")
+        raise RouteParserException("Invalid hostname in URL")
 
     # Check the path
     path_parts = parsed_url.path.split("/")
     # There should be three parts
     if len(path_parts) != 4:
-        raise ValueError("Invalid path in URL")
+        raise RouteParserException("Invalid path in URL")
     # The first part should be the dongle ID
     dongle_id = path_parts[1]
     # The second part should be the start time
@@ -92,7 +92,7 @@ def parse_absolute_time_url(
     end_time = int(path_parts[3])
     # Start time should be before end time
     if start_time >= end_time:
-        raise ValueError("Invalid start and end times in URL")
+        raise RouteParserException("Invalid start and end times in URL")
 
     # The above URL is equivalent to this API call:
     # https://api.comma.ai/v1/devices/a2a0ccea32023010/routes_segments?end=1690488851596&start=1690488081496
@@ -105,7 +105,7 @@ def parse_absolute_time_url(
         response = requests.get(api_url)
     # Check the response
     if response.status_code != 200:
-        raise ValueError("Invalid API response")
+        raise RouteParserException("Invalid API response")
 
     json = response.json()
 
@@ -192,9 +192,9 @@ def parse_absolute_time_url(
     # If we didn't find a match, throw an exception
     if matched_route is None:
         if jwt_token:
-            raise ValueError(f"Route not found from URL and JWT Token. Make sure you're using a correct JWT token of 181+ characters from https://jwt.comma.ai .")
+            raise RouteParserException(f"Route not found from URL and JWT Token. Make sure you're using a correct JWT token of 181+ characters from https://jwt.comma.ai .")
         else:
-            raise ValueError(f"Route not found from URL. Route is possibly not set to Public. Visit the URL {route_or_url} and make sure Public is toggled under the \"More Info\" drop-down. You can always make it not Public after you're done rendering a clip.")
+            raise RouteParserException(f"Route not found from URL. Route is possibly not set to Public. Visit the URL {route_or_url} and make sure Public is toggled under the \"More Info\" drop-down. You can always make it not Public after you're done rendering a clip.")
 
     # Get the route name
     route_name = matched_route["fullname"]
@@ -233,9 +233,9 @@ def parse_route_or_url(
     # Check if the host is connect.comma.ai
     valid_hostname = parsed_url.hostname == "connect.comma.ai"
     if not valid_hostname:
-        raise ValueError("Invalid hostname in URL")
+        raise RouteParserException("Invalid hostname in URL")
     if not parsed_url.hostname == "connect.comma.ai":
-        raise ValueError("Invalid hostname in URL")
+        raise RouteParserException("Invalid hostname in URL")
 
     # Check if the path has 3 parts
     if len(url_parts) == 4 and "-" not in url_parts[2]:
@@ -247,7 +247,7 @@ def parse_route_or_url(
     print("Number of url parts: ", len(url_parts))
 
     # If the URL is not an absolute time URL, throw an exception
-    raise ValueError("Invalid URL")
+    raise RouteParserException("Invalid URL")
 
 # Make an argparse test for this
 if __name__ == "__main__":
