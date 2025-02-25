@@ -71,7 +71,7 @@ class DiscordOpenpilotClipAsyncProcessor(OpenpilotClipAsyncProcessor):
             if worker.succeeded():
                 embed.set_field_at(1, name='Status', value='Uploading result')
                 await msg.edit(embed=embed)
-                discord_file = discord.File(worker.output(), 'output.mp4')
+                discord_file = discord.File(worker.output(), f'{worker.get_route()}.mp4')
                 embed.color = discord.Color.green()
                 embed.set_field_at(1, name='Status', value='Finished')
                 await msg.add_files(discord_file)
@@ -135,6 +135,9 @@ class ReplicateClipWorker(OpenpilotClipAsyncWorker):
     def is_valid_route(self):
         r = requests.get(f'https://api.comma.ai/v1/route/{self.route}')
         return r.status_code == 200
+    
+    def get_route(self):
+        return self.route
     
     def start(self):
         model = replicate.models.get(self.model)
