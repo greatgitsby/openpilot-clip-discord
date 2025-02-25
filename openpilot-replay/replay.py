@@ -72,15 +72,7 @@ class DiscordOpenpilotClipAsyncProcessor(OpenpilotClipAsyncProcessor):
                 await msg.add_files(discord_file)
                 await msg.edit(embed=embed)
             else:
-                # Create an error embed
-                error_embed = discord.Embed(
-                    title="Processing Failed",
-                    description=f"```\n{worker.get_error()}\n```",
-                    color=discord.Color.red()
-                )
-                error_embed.add_field(name='Route', value=route_url)
-                await msg.edit(embed=error_embed)
-                raise ReplayException(f'replay failed:\n\n```\n{worker.get_error()}\n```')
+                raise ReplayException(worker.get_error())
         except RouteParserException as e:
             error_embed = discord.Embed(
                 title="Route Error",
@@ -92,8 +84,8 @@ class DiscordOpenpilotClipAsyncProcessor(OpenpilotClipAsyncProcessor):
         except ReplayException as e:
             # Create an error embed with the specific exception
             error_embed = discord.Embed(
-                title="Processing Error",
-                description=str(e),
+                title="Replay Failed",
+                description=f'```\n{str(e)}\n```',
                 color=discord.Color.red()
             )
             error_embed.add_field(name='Route', value=route_url)
