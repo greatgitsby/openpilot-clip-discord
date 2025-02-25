@@ -7,7 +7,7 @@ import replicate
 import replicate.prediction
 import requests
 import asyncio
-from clipper.route_parser import parse_route_or_url
+from clipper.route_parser import parse_route_or_url, RouteParserException
 from abc import ABC, abstractmethod
 from io import BytesIO
 
@@ -81,6 +81,14 @@ class DiscordOpenpilotClipAsyncProcessor(OpenpilotClipAsyncProcessor):
                 error_embed.add_field(name='Route', value=route_url)
                 await msg.edit(embed=error_embed)
                 raise ReplayException(f'replay failed:\n\n```\n{worker.get_error()}\n```')
+        except RouteParserException as e:
+            error_embed = discord.Embed(
+                title="Route Error",
+                description=str(e),
+                color=discord.Color.red()
+            )
+            error_embed.add_field(name='Route', value=route_url)
+            await msg.edit(embed=error_embed)
         except ReplayException as e:
             # Create an error embed with the specific exception
             error_embed = discord.Embed(

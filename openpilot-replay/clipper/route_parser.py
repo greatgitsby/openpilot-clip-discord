@@ -6,6 +6,9 @@ from urllib.parse import urlparse
 
 import requests
 
+class RouteParserException(Exception):
+    pass
+
 # Dataclass for a parsed route or URL
 
 @dataclasses.dataclass
