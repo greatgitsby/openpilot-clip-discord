@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 
+import asyncio
 import discord
 import os
 import re
 import replicate
 import replicate.prediction
 import requests
-import asyncio
-from clipper.route_parser import parse_route_or_url, RouteParserException
+
 from abc import ABC, abstractmethod
+from clipper.route_parser import parse_route_or_url, RouteParserException
 from io import BytesIO
+from urllib.parse import urlparse
 
 link_regex = re.compile(r'https?://\S+')
 
@@ -188,7 +190,7 @@ def create_progress_bar(progress, total_steps, bar_length=10):
     bar = '▓' * filled_length + '░' * (bar_length - filled_length)
     return bar
 
-async def do_work(url: str, channel: discord.TextChannel):
+async def process_clip(url: str, channel: discord.TextChannel):
     processor = DiscordOpenpilotClipAsyncProcessor(channel=channel)
     await processor.process(url)
 
@@ -202,7 +204,8 @@ class MyClient(discord.Client):
         
         links = link_regex.findall(message.content)
         for link in links:
-            await do_work(link, message.channel)
+            if urlparse(link).hostname == 'connect.comma.ai':
+                await process_clip(link, message.channel)
 
 if __name__ == "__main__":
     discord_token = os.environ.get('DISCORD_TOKEN')
