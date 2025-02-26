@@ -71,7 +71,7 @@ class DiscordOpenpilotClipAsyncProcessor(OpenpilotClipAsyncProcessor):
             if worker.succeeded():
                 embed.set_field_at(1, name='Status', value='Uploading result')
                 await msg.edit(embed=embed)
-                discord_file = discord.File(worker.output(), f'{worker.get_route()}.hevc')
+                discord_file = discord.File(worker.output(), f'{worker.get_route()}.mp4')
                 embed.color = discord.Color.green()
                 embed.set_field_at(1, name='Status', value='Finished')
                 await msg.add_files(discord_file)
