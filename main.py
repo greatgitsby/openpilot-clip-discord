@@ -9,26 +9,50 @@ from urllib.parse import urlparse
 link_regex = re.compile(r'https?://\S+')
 route_regex = re.compile(r'\S+/\d+--\S+/\d+/\d+')
 
-async def process_clip(route: str, message: discord.Message):
-  log = f'clipping {route}...'
-  print(log)
-  thread = message.channel
-  msg = await thread.send(log)
+
+bot = discord.Bot()
+
+async def process_clip(ctx: discord.ApplicationContext, route: str):
+  await ctx.defer(ephemeral=True)
+    
+  link = link_regex.match(route)
+  if link:
+      path = urlparse(link.group()).path
+      route = route_regex.match(path[1:])
+      if not route:
+        await ctx.respond(content='no route found in the input provided')
+        return
+  else:
+    route = route_regex.match(route)
+    if not route:
+      await ctx.respond(content='no route found in the input provided')
+      return
+  route = route.group()
+  print(f'clipping {route}...')
   with TemporaryDirectory() as temp_dir:
     path = Path(os.path.join(temp_dir, 'clip.mp4')).resolve()
-    proc = await asyncio.create_subprocess_exec('openpilot/tools/op.sh', 'clip', route, '-o', path, cwd='openpilot', stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    proc = await asyncio.create_subprocess_exec('openpilot/tools/op.sh', 'clip', route, '-o', path, '-f', '10', cwd='openpilot', stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
 
     stdout, stderr = await proc.communicate()
     if proc.returncode != 0:
-      await thread.send(f'''
-      ```
-      {stderr.decode()}        
-      ```
-      ''')
+      await ctx.respond(content='clip failed due to unknown reason')
       return
-    await msg.edit(content=f"here's your clip for {route}:", attachments=(discord.File(path),))
+    await ctx.respond(content=f"here's your clip for {route}:", file=discord.File(path))
 
-class MyClient(discord.Client):
+@bot.command(
+  description="clip an openpilot route",
+  integration_types={
+    discord.IntegrationType.guild_install,
+    discord.IntegrationType.user_install,
+  },
+)
+@discord.option("route", type=str, description='the route or connect URL with timing info', required=True)
+async def clip(ctx: discord.ApplicationContext, route: str):
+  if ctx.author.bot:
+    return
+  await process_clip(ctx, route)
+
+class Client(discord.Client):
   async def on_ready(self):
     print('Logged on as', self.user)
 
@@ -52,10 +76,4 @@ if __name__ == "__main__":
   discord_token = os.environ.get('DISCORD_TOKEN')
   if discord_token is None:
     raise EnvironmentError('Missing discord token')
-
-  intents = discord.Intents.default()
-  intents.messages = True
-  intents.message_content = True
-
-  client = MyClient(intents=intents)
-  client.run(discord_token)
+  bot.run(discord_token)
