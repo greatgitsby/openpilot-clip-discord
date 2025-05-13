@@ -31,33 +31,38 @@ class VideoPreview(discord.ui.View):
     await self.ctx.edit(view=self)
 
 
+async def process_clip(ctx: discord.ApplicationContext, route: str, title: str):
+  print(f'{ctx.interaction.user.display_name} ({ctx.interaction.user.id}) clipping route `{route}`' )
+  await ctx.edit(content=f'clipping route {route}')
+  try:
+    with TemporaryDirectory() as temp_dir:
+      path = Path(os.path.join(temp_dir, f'{route.replace("/", "-")}.mp4')).resolve()
+      args = ['openpilot/tools/clip/run.py', route, '-o', path, '-f', '10']
+      if title:
+        args.extend(['-t', title])
+      proc = await asyncio.create_subprocess_exec('openpilot/.venv/bin/python3', *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+
+      stdout, stderr = await proc.communicate()
+      if proc.returncode != 0:
+        await ctx.edit(content=f'clip failed due to unknown reason:\n\n```\n{stderr.decode()}\n```')
+      else:
+        await ctx.edit(content='', file=discord.File(path), view=VideoPreview(ctx, route, discord.File(path)))
+  except Exception as e:
+    print('error processing clip', str(e))
+    await ctx.edit(content=f'clip failed due to unknown reason:\n\n```\n{str(e)}\n```')
+
+
 async def worker(name: str):
   print(f'started worker {name}')
   while True:
     ctx, route, title = await queue.get()
-    print(f'{ctx.interaction.user.display_name} ({ctx.interaction.user.id}) clipping route `{route}`' )
-    await ctx.edit(content=f'clipping route {route}')
     try:
-      with TemporaryDirectory() as temp_dir:
-        path = Path(os.path.join(temp_dir, f'{route.replace("/", "-")}.mp4')).resolve()
-        args = ['.venv/bin/python3', 'tools/clip/run.py', route, '-o', path, '-f', '10']
-        if title:
-          args.extend(['-t', title])
-        proc = await asyncio.create_subprocess_exec(*args, cwd='openpilot', stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-
-        stdout, stderr = await proc.communicate()
-        if proc.returncode != 0:
-          await ctx.edit(content=f'clip failed due to unknown reason:\n\n```\n{stderr.decode()}\n```')
-        else:
-          await ctx.edit(content='', file=discord.File(path), view=VideoPreview(ctx, route, discord.File(path)))
-    except Exception as e:
-      print('error processing clip', str(e))
-      await ctx.edit(content=f'clip failed due to unknown reason:\n\n```\n{str(e)}\n```')
+      await process_clip(ctx, route, title)
     finally:
       queue.task_done()
 
 
-async def process_clip(ctx: discord.ApplicationContext, route: str, title: str):
+async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: str):
   await ctx.defer(ephemeral=True)
     
   link = link_regex.match(route)
@@ -73,8 +78,9 @@ async def process_clip(ctx: discord.ApplicationContext, route: str, title: str):
       await ctx.respond(content='no route found in the input provided')
       return
   route = route.group()
+  await ctx.edit(content=f'queued request, {queue.qsize()} in line ahead')
   await queue.put((ctx, route, title,))
-  await ctx.edit(content='queued request')
+
 
 @bot.command(
   description="clip an openpilot route",
@@ -84,11 +90,11 @@ async def process_clip(ctx: discord.ApplicationContext, route: str, title: str):
   },
 )
 @discord.option("route", type=str, description='the route or connect URL with timing info', required=True)
-@discord.option("title", type=str, description='an optional title to overlay', min=1, max=80, required=False)
+@discord.option("title", type=str, description='an optional title to overlay', min_length=1, max_length=80, required=False)
 async def clip(ctx: discord.ApplicationContext, route: str, title: str):
   if ctx.author.bot:
     return
-  await process_clip(ctx, route, title)
+  await preprocess_clip(ctx, route, title)
 
 
 @bot.listen(once=True)
