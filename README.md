@@ -2,6 +2,6 @@
 
 ## setup
 ```bash
-./setup.sh
+./init.sh
 DISCORD_TOKEN='' ./live.sh
 ```
