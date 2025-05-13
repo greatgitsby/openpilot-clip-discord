@@ -16,7 +16,7 @@ WORKERS = int(os.environ.get('WORKERS', '1'))
 
 
 def format_route(route: str):
-  return f'`[{route}](https://connect.comma.ai/{route})`'
+  return f'[`{route}`](https://connect.comma.ai/{route})'
 
 
 class VideoPreview(discord.ui.View):
@@ -29,7 +29,7 @@ class VideoPreview(discord.ui.View):
   @discord.ui.button(label='Post', style=discord.ButtonStyle.primary, emoji='▶️')
   async def post_button(self, button: discord.ui.Button, interaction: discord.Interaction):
     user_id = interaction.user.id
-    await interaction.response.send_message(content=f'<@{user_id}> posted clip {format_route(self.route)}', file=self.vid)
+    await interaction.response.send_message(content=f'<@{user_id}> shared a clip: {format_route(self.route)}', file=self.vid)
     button.label = 'Posted'
     button.emoji = '✅'
     button.style = discord.ButtonStyle.green
