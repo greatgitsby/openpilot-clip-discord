@@ -15,6 +15,10 @@ bot = discord.Bot()
 WORKERS = int(os.environ.get('WORKERS', '1'))
 
 
+def format_route(route: str):
+  return f'[`{route}`](https://connect.comma.ai/{route})'
+
+
 class VideoPreview(discord.ui.View):
   def __init__(self, ctx: discord.ApplicationContext, route: str, vid: discord.File):
     super().__init__(timeout=None)
@@ -25,7 +29,7 @@ class VideoPreview(discord.ui.View):
   @discord.ui.button(label='Post', style=discord.ButtonStyle.primary, emoji='▶️')
   async def post_button(self, button: discord.ui.Button, interaction: discord.Interaction):
     user_id = interaction.user.id
-    await interaction.response.send_message(content=f'<@{user_id}> posted a clip `{self.route}`', file=self.vid)
+    await interaction.response.send_message(content=f'<@{user_id}> shared a clip: {format_route(self.route)}', file=self.vid)
     button.label = 'Posted'
     button.emoji = '✅'
     button.style = discord.ButtonStyle.green
@@ -34,8 +38,8 @@ class VideoPreview(discord.ui.View):
 
 
 async def process_clip(ctx: discord.ApplicationContext, route: str, title: str):
-  print(f'{ctx.interaction.user.display_name} ({ctx.interaction.user.id}) clipping route `{route}`' )
-  await ctx.edit(content=f'clipping route `{route}`')
+  print(f'{ctx.interaction.user.display_name} ({ctx.interaction.user.id}) clipping {route}' )
+  await ctx.edit(content=f'clipping {format_route(route)}')
   try:
     with TemporaryDirectory() as temp_dir:
       path = Path(os.path.join(temp_dir, f'{route.replace("/", "-")}.mp4')).resolve()
@@ -46,12 +50,12 @@ async def process_clip(ctx: discord.ApplicationContext, route: str, title: str):
 
       stdout, stderr = await proc.communicate()
       if proc.returncode != 0:
-        await ctx.edit(content=f'clip failed due to unknown reason:\n\n```\n{stderr.decode()}\n```')
+        await ctx.edit(content=f'clip of {format_route(route)} failed due to unknown reason:\n\n```\n{stderr.decode()}\n```')
       else:
-        await ctx.edit(content=f'clipped route `{route}`:', file=discord.File(path), view=VideoPreview(ctx, route, discord.File(path)))
+        await ctx.edit(content=f'clipped {format_route(route)}:', file=discord.File(path), view=VideoPreview(ctx, route, discord.File(path)))
   except Exception as e:
     print('error processing clip', str(e))
-    await ctx.edit(content=f'clip failed due to unknown reason:\n\n```\n{str(e)}\n```')
+    await ctx.edit(content=f'clip of {format_route(route)} failed due to unknown reason:\n\n```\n{str(e)}\n```')
 
 
 async def worker(name: str):
