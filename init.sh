@@ -12,4 +12,3 @@ pushd openpilot
 tools/op.sh setup
 tools/op.sh build
 popd
-
