@@ -12,6 +12,8 @@ route_regex = re.compile(r'\S+/\d+--\S+/\d+/\d+')
 queue = asyncio.Queue()
 bot = discord.Bot()
 
+WORKERS = int(os.environ.get('WORKERS', '1'))
+
 
 class VideoPreview(discord.ui.View):
   def __init__(self, ctx: discord.ApplicationContext, route: str, vid: discord.File):
@@ -99,8 +101,8 @@ async def clip(ctx: discord.ApplicationContext, route: str, title: str):
 
 @bot.listen(once=True)
 async def on_ready():
-  for i in range(1):
-    await asyncio.create_task(worker(f'clipper-worker-{i}'))
+  for i in range(WORKERS):
+    asyncio.create_task(worker(f'clip-worker-{i}'))
 
 
 if __name__ == "__main__":
