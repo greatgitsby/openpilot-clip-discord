@@ -14,48 +14,50 @@ queue = asyncio.Queue()
 bot = discord.Bot()
 
 class VideoPreview(discord.ui.View):
-  def __init__(self, ctx: discord.ApplicationContext, vid: discord.File):
+  def __init__(self, ctx: discord.ApplicationContext, route: str, vid: discord.File):
     super().__init__(timeout=None)
     self.ctx = ctx
+    self.route = route
     self.vid = vid
 
-  async def send_video(self, interaction: discord.Interaction):
-    user_id = interaction.user.id
-    await interaction.response.send_message(content=f'<@{user_id}> posted a clip', file=self.vid)
-    self.post_button.disabled = True
-    await interaction.message.edit(view=self)
-    self.stop()
-
   @discord.ui.button(label='Post', style=discord.ButtonStyle.primary, emoji='▶️')
-  async def post_button(self, button, interaction):
-    await self.send_video(interaction)
+  async def post_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+    user_id = interaction.user.id
+    await interaction.response.send_message(content=f'<@{user_id}> posted a clip `{self.route}`', file=self.vid)
+    button.label = 'Posted'
+    button.emoji = '✅'
+    button.style = discord.ButtonStyle.green
+    button.disabled = True
+    await self.ctx.edit(view=self)
 
 
 async def worker(name: str):
   print(f'started worker {name}')
   while True:
-    route, ctx = await queue.get()
-    log = f'clipping route `{route}`' 
-    print(log)
-    await ctx.edit(content=log)
+    ctx, route, title = await queue.get()
+    print(f'{ctx.interaction.user.display_name} ({ctx.interaction.user.id}) clipping route `{route}`' )
+    await ctx.edit(content=f'clipping route {route}')
     try:
       with TemporaryDirectory() as temp_dir:
-        path = Path(os.path.join(temp_dir, 'clip.mp4')).resolve()
-        proc = await asyncio.create_subprocess_exec('openpilot/tools/op.sh', 'clip', route, '-o', path, '-f', '10', cwd='openpilot', stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        path = Path(os.path.join(temp_dir, f'{route.replace("/", "-")}.mp4')).resolve()
+        args = ['.venv/bin/python3', 'tools/clip/run.py', route, '-o', path, '-f', '10']
+        if title:
+          args.extend(['-t', title])
+        proc = await asyncio.create_subprocess_exec(*args, cwd='openpilot', stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
 
         stdout, stderr = await proc.communicate()
         if proc.returncode != 0:
-          await ctx.edit(content='clip failed due to unknown reason')
+          await ctx.edit(content=f'clip failed due to unknown reason:\n\n```\n{stderr.decode()}\n```')
         else:
-          await ctx.edit(content='', file=discord.File(path), view=VideoPreview(ctx, discord.File(path)))
+          await ctx.edit(content='', file=discord.File(path), view=VideoPreview(ctx, route, discord.File(path)))
     except Exception as e:
       print('error processing clip', str(e))
-      print(e)
+      await ctx.edit(content=f'clip failed due to unknown reason:\n\n```\n{str(e)}\n```')
     finally:
       queue.task_done()
 
 
-async def process_clip(ctx: discord.ApplicationContext, route: str):
+async def process_clip(ctx: discord.ApplicationContext, route: str, title: str):
   await ctx.defer(ephemeral=True)
     
   link = link_regex.match(route)
@@ -71,7 +73,7 @@ async def process_clip(ctx: discord.ApplicationContext, route: str):
       await ctx.respond(content='no route found in the input provided')
       return
   route = route.group()
-  await queue.put((route, ctx,))
+  await queue.put((ctx, route, title,))
   await ctx.edit(content='queued request')
 
 @bot.command(
@@ -82,10 +84,11 @@ async def process_clip(ctx: discord.ApplicationContext, route: str):
   },
 )
 @discord.option("route", type=str, description='the route or connect URL with timing info', required=True)
-async def clip(ctx: discord.ApplicationContext, route: str):
+@discord.option("title", type=str, description='an optional title to overlay', min=1, max=80, required=False)
+async def clip(ctx: discord.ApplicationContext, route: str, title: str):
   if ctx.author.bot:
     return
-  await process_clip(ctx, route)
+  await process_clip(ctx, route, title)
 
 
 @bot.listen(once=True)
