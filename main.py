@@ -9,9 +9,9 @@ from urllib.parse import urlparse
 link_regex = re.compile(r'https?://\S+')
 route_regex = re.compile(r'\S+/\d+--\S+/\d+/\d+')
 
-
 queue = asyncio.Queue()
 bot = discord.Bot()
+
 
 class VideoPreview(discord.ui.View):
   def __init__(self, ctx: discord.ApplicationContext, route: str, vid: discord.File):
@@ -108,3 +108,4 @@ if __name__ == "__main__":
   if discord_token is None:
     raise EnvironmentError('Missing discord token')
   bot.run(discord_token)
+
