@@ -33,7 +33,7 @@ class VideoPreview(discord.ui.View):
 
 async def process_clip(ctx: discord.ApplicationContext, route: str, title: str):
   print(f'{ctx.interaction.user.display_name} ({ctx.interaction.user.id}) clipping route `{route}`' )
-  await ctx.edit(content=f'clipping route {route}')
+  await ctx.edit(content=f'clipping route `{route}`')
   try:
     with TemporaryDirectory() as temp_dir:
       path = Path(os.path.join(temp_dir, f'{route.replace("/", "-")}.mp4')).resolve()
@@ -46,7 +46,7 @@ async def process_clip(ctx: discord.ApplicationContext, route: str, title: str):
       if proc.returncode != 0:
         await ctx.edit(content=f'clip failed due to unknown reason:\n\n```\n{stderr.decode()}\n```')
       else:
-        await ctx.edit(content='', file=discord.File(path), view=VideoPreview(ctx, route, discord.File(path)))
+        await ctx.edit(content=f'clipped route `{route}`:', file=discord.File(path), view=VideoPreview(ctx, route, discord.File(path)))
   except Exception as e:
     print('error processing clip', str(e))
     await ctx.edit(content=f'clip failed due to unknown reason:\n\n```\n{str(e)}\n```')
