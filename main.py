@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 link_regex = re.compile(r'https?://\S+')
-route_regex = re.compile(r'\S+/\d+--\S+/\d+/\d+')
+route_regex = re.compile(r'\S+/\S+--\S+/\d+/\d+')
 
 queue = asyncio.Queue()
 bot = discord.Bot()
