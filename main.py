@@ -12,6 +12,7 @@ route_regex = re.compile(r'\S+/\S+--\S+/\d+/\d+')
 queue = asyncio.Queue()
 bot = discord.Bot()
 
+MAX_CLIP_LEN_S = int(os.environ.get('MAX_CLIP_LEN', '30'))
 WORKERS = int(os.environ.get('WORKERS', '1'))
 
 
@@ -84,8 +85,13 @@ async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: st
       await ctx.respond(content='no route found in the input provided')
       return
   route = route.group()
-  await ctx.edit(content=f'queued request, {queue.qsize()} in line ahead')
-  await queue.put((ctx, route, title,))
+  start_str, end_str = route.split('/')[2:]
+  start, end = int(start_str), int(end_str)
+  if end - start > MAX_CLIP_LEN_S:
+    await ctx.edit(content=f'cannot make a clip longer than {MAX_CLIP_LEN_S}s')
+  else:
+    await ctx.edit(content=f'queued request, {queue.qsize()} in line ahead')
+    await queue.put((ctx, route, title,))
 
 
 @bot.command(
