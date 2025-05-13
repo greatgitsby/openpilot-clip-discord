@@ -10,7 +10,50 @@ link_regex = re.compile(r'https?://\S+')
 route_regex = re.compile(r'\S+/\d+--\S+/\d+/\d+')
 
 
+queue = asyncio.Queue()
 bot = discord.Bot()
+
+class VideoPreview(discord.ui.View):
+  def __init__(self, ctx: discord.ApplicationContext, vid: discord.File):
+    super().__init__(timeout=None)
+    self.ctx = ctx
+    self.vid = vid
+
+  async def send_video(self, interaction: discord.Interaction):
+    user_id = interaction.user.id
+    await interaction.response.send_message(content=f'<@{user_id}> posted a clip', file=self.vid)
+    self.post_button.disabled = True
+    await interaction.message.edit(view=self)
+    self.stop()
+
+  @discord.ui.button(label='Post', style=discord.ButtonStyle.primary, emoji='▶️')
+  async def post_button(self, button, interaction):
+    await self.send_video(interaction)
+
+
+async def worker(name: str):
+  print(f'started worker {name}')
+  while True:
+    route, ctx = await queue.get()
+    log = f'clipping route `{route}`' 
+    print(log)
+    await ctx.edit(content=log)
+    try:
+      with TemporaryDirectory() as temp_dir:
+        path = Path(os.path.join(temp_dir, 'clip.mp4')).resolve()
+        proc = await asyncio.create_subprocess_exec('openpilot/tools/op.sh', 'clip', route, '-o', path, '-f', '10', cwd='openpilot', stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+          await ctx.edit(content='clip failed due to unknown reason')
+        else:
+          await ctx.edit(content='', file=discord.File(path), view=VideoPreview(ctx, discord.File(path)))
+    except Exception as e:
+      print('error processing clip', str(e))
+      print(e)
+    finally:
+      queue.task_done()
+
 
 async def process_clip(ctx: discord.ApplicationContext, route: str):
   await ctx.defer(ephemeral=True)
@@ -28,16 +71,8 @@ async def process_clip(ctx: discord.ApplicationContext, route: str):
       await ctx.respond(content='no route found in the input provided')
       return
   route = route.group()
-  print(f'clipping {route}...')
-  with TemporaryDirectory() as temp_dir:
-    path = Path(os.path.join(temp_dir, 'clip.mp4')).resolve()
-    proc = await asyncio.create_subprocess_exec('openpilot/tools/op.sh', 'clip', route, '-o', path, '-f', '10', cwd='openpilot', stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-
-    stdout, stderr = await proc.communicate()
-    if proc.returncode != 0:
-      await ctx.respond(content='clip failed due to unknown reason')
-      return
-    await ctx.respond(content=f"here's your clip for {route}:", file=discord.File(path))
+  await queue.put((route, ctx,))
+  await ctx.edit(content='queued request')
 
 @bot.command(
   description="clip an openpilot route",
@@ -52,25 +87,12 @@ async def clip(ctx: discord.ApplicationContext, route: str):
     return
   await process_clip(ctx, route)
 
-class Client(discord.Client):
-  async def on_ready(self):
-    print('Logged on as', self.user)
 
-  async def on_message(self, message: discord.Message):
-    content = message.content
-    if message.author == self.user:
-      return
-     
-    link = link_regex.match(message.content)
-    if link:
-        path = urlparse(link.group()).path
-        route = route_regex.match(path[1:])
-        if route:
-          asyncio.create_task(process_clip(route.group(), message))
-    else:
-      route = route_regex.match(content)
-      if route:
-        asyncio.create_task(process_clip(route.group(), message))
+@bot.listen(once=True)
+async def on_ready():
+  for i in range(1):
+    await asyncio.create_task(worker(f'clipper-worker-{i}'))
+
 
 if __name__ == "__main__":
   discord_token = os.environ.get('DISCORD_TOKEN')
