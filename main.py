@@ -40,7 +40,7 @@ class VideoPreview(discord.ui.View):
 
 async def process_clip(ctx: discord.ApplicationContext, route: str, title: str | None, metric: bool | None):
   print(f'{ctx.interaction.user.display_name} ({ctx.interaction.user.id}) clipping {route}' )
-  await ctx.edit(content=f'clipping {format_route(route)}')
+  await ctx.edit(content=f'clipping {format_route(route)}\n\n{"title: " + title if title else 'no title'}\n\n{'metric' if metric else 'imperial'} units')
   try:
     with TemporaryDirectory() as temp_dir:
       path = Path(os.path.join(temp_dir, f'{route.replace("/", "-")}.mp4')).resolve()
