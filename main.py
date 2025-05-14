@@ -40,7 +40,7 @@ class VideoPreview(discord.ui.View):
 
 async def process_clip(ctx: discord.ApplicationContext, route: str, title: str | None, metric: bool | None):
   print(f'{ctx.interaction.user.display_name} ({ctx.interaction.user.id}) clipping {route}' )
-  await ctx.edit(content=f'clipping {format_route(route)}\n\n{"title: " + title if title else 'no title'}\n\n{'metric' if metric else 'imperial'} units')
+  await ctx.edit(content=f'clipping {format_route(route)}, {'metric' if metric else 'imperial'} units')
   try:
     with TemporaryDirectory() as temp_dir:
       path = Path(os.path.join(temp_dir, f'{route.replace("/", "-")}.mp4')).resolve()
@@ -108,7 +108,7 @@ async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: st
 @discord.option("metric", type=bool, description='use metric units. attempts to infer by default', required=False)
 async def clip(ctx: discord.ApplicationContext, route: str, title: str | None, metric: bool | None):
   locale = ctx.interaction.locale.lower()
-  metric = bool(metric) or locale.startswith('en-us') or locale.startswith('en-gb')
+  metric = bool(metric) or not (locale.startswith('en-us') or locale.startswith('en-gb'))
   if ctx.author.bot:
     return
   await preprocess_clip(ctx, route, title, metric)
