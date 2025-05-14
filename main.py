@@ -38,7 +38,7 @@ class VideoPreview(discord.ui.View):
     await self.ctx.edit(view=self)
 
 
-async def process_clip(ctx: discord.ApplicationContext, route: str, title: str):
+async def process_clip(ctx: discord.ApplicationContext, route: str, title: str | None, metric: bool | None):
   print(f'{ctx.interaction.user.display_name} ({ctx.interaction.user.id}) clipping {route}' )
   await ctx.edit(content=f'clipping {format_route(route)}')
   try:
@@ -46,7 +46,9 @@ async def process_clip(ctx: discord.ApplicationContext, route: str, title: str):
       path = Path(os.path.join(temp_dir, f'{route.replace("/", "-")}.mp4')).resolve()
       args = ['openpilot/tools/clip/run.py', route, '-o', path, '-f', '10']
       if title:
-        args.extend(['-t', title])
+        args.extend(['--title', title])
+      if metric:
+        args.extend(['--metric'])
       proc = await asyncio.create_subprocess_exec('openpilot/.venv/bin/python3', *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
 
       stdout, stderr = await proc.communicate()
@@ -69,7 +71,7 @@ async def worker(name: str):
       queue.task_done()
 
 
-async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: str):
+async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: str | None, metric: bool | None):
   await ctx.defer(ephemeral=True)
     
   link = link_regex.match(route)
@@ -91,7 +93,7 @@ async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: st
     await ctx.edit(content=f'cannot make a clip longer than {MAX_CLIP_LEN_S}s')
   else:
     await ctx.edit(content=f'queued request, {queue.qsize()} in line ahead')
-    await queue.put((ctx, route, title,))
+    await queue.put((ctx, route, title, metric,))
 
 
 @bot.command(
@@ -103,10 +105,11 @@ async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: st
 )
 @discord.option("route", type=str, description='the route or connect URL with timing info', required=True)
 @discord.option("title", type=str, description='an optional title to overlay', min_length=1, max_length=80, required=False)
-async def clip(ctx: discord.ApplicationContext, route: str, title: str):
+@discord.option("metric", type=bool, description='use metric units. tries to infer by default', required=False)
+async def clip(ctx: discord.ApplicationContext, route: str, title: str | None, metric: bool | None):
   if ctx.author.bot:
     return
-  await preprocess_clip(ctx, route, title)
+  await preprocess_clip(ctx, route, title, metric)
 
 
 @bot.listen(once=True)
