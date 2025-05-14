@@ -48,7 +48,7 @@ async def process_clip(ctx: discord.ApplicationContext, route: str, title: str |
       if title:
         args.extend(['--title', title])
       if metric:
-        args.extend(['--metric'])
+        args.append('--metric')
       proc = await asyncio.create_subprocess_exec('openpilot/.venv/bin/python3', *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
 
       stdout, stderr = await proc.communicate()
