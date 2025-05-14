@@ -64,9 +64,9 @@ async def process_clip(ctx: discord.ApplicationContext, route: str, title: str |
 async def worker(name: str):
   print(f'started worker {name}')
   while True:
-    ctx, route, title = await queue.get()
+    ctx, route, title, metric = await queue.get()
     try:
-      await process_clip(ctx, route, title)
+      await process_clip(ctx, route, title, metric)
     finally:
       queue.task_done()
 
