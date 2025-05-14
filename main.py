@@ -38,7 +38,7 @@ class VideoPreview(discord.ui.View):
     await self.ctx.edit(view=self)
 
 
-async def process_clip(ctx: discord.ApplicationContext, route: str, title: str | None, metric: bool | None):
+async def process_clip(ctx: discord.ApplicationContext, route: str, title: str):
   print(f'{ctx.interaction.user.display_name} ({ctx.interaction.user.id}) clipping {route}' )
   await ctx.edit(content=f'clipping {format_route(route)}')
   try:
@@ -46,9 +46,7 @@ async def process_clip(ctx: discord.ApplicationContext, route: str, title: str |
       path = Path(os.path.join(temp_dir, f'{route.replace("/", "-")}.mp4')).resolve()
       args = ['openpilot/tools/clip/run.py', route, '-o', path, '-f', '10']
       if title:
-        args.extend(['--title', title])
-      if metric:
-        args.append('--metric')
+        args.extend(['-t', title])
       proc = await asyncio.create_subprocess_exec('openpilot/.venv/bin/python3', *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
 
       stdout, stderr = await proc.communicate()
@@ -64,14 +62,14 @@ async def process_clip(ctx: discord.ApplicationContext, route: str, title: str |
 async def worker(name: str):
   print(f'started worker {name}')
   while True:
-    ctx, route, title, metric = await queue.get()
+    ctx, route, title = await queue.get()
     try:
-      await process_clip(ctx, route, title, metric)
+      await process_clip(ctx, route, title)
     finally:
       queue.task_done()
 
 
-async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: str | None, metric: bool | None):
+async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: str):
   await ctx.defer(ephemeral=True)
     
   link = link_regex.match(route)
@@ -93,7 +91,7 @@ async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: st
     await ctx.edit(content=f'cannot make a clip longer than {MAX_CLIP_LEN_S}s')
   else:
     await ctx.edit(content=f'queued request, {queue.qsize()} in line ahead')
-    await queue.put((ctx, route, title, metric,))
+    await queue.put((ctx, route, title,))
 
 
 @bot.command(
@@ -105,13 +103,10 @@ async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: st
 )
 @discord.option("route", type=str, description='the route or connect URL with timing info', required=True)
 @discord.option("title", type=str, description='an optional title to overlay', min_length=1, max_length=80, required=False)
-@discord.option("metric", type=bool, description='use metric units. attempts to infer by default', required=False)
-async def clip(ctx: discord.ApplicationContext, route: str, title: str | None, metric: bool | None):
-  locale = ctx.interaction.locale.lower()
-  metric = bool(metric) or locale.startswith('en-us') or locale.startswith('en-gb')
+async def clip(ctx: discord.ApplicationContext, route: str, title: str):
   if ctx.author.bot:
     return
-  await preprocess_clip(ctx, route, title, metric)
+  await preprocess_clip(ctx, route, title)
 
 
 @bot.listen(once=True)
