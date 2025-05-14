@@ -105,7 +105,7 @@ async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: st
 )
 @discord.option("route", type=str, description='the route or connect URL with timing info', required=True)
 @discord.option("title", type=str, description='an optional title to overlay', min_length=1, max_length=80, required=False)
-@discord.option("metric", type=bool, description='use metric units. tries to infer by default', required=False)
+@discord.option("metric", type=bool, description='use metric units. attempts to infer by default', required=False)
 async def clip(ctx: discord.ApplicationContext, route: str, title: str | None, metric: bool | None):
   locale = ctx.interaction.locale.lower()
   metric = bool(metric) or locale.startswith('en-us') or locale.startswith('en-gb')
