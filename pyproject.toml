@@ -5,5 +5,12 @@ description = "Clip openpilot"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "py-cord>=2.6.1"
+    "openpilot",
+    "openpilot[dev]",
+    "openpilot[testing]",
+    "py-cord>=2.6.1",
+    "requests>=2.32.3",
 ]
+
+[tool.uv.sources]
+openpilot = { path = "./openpilot" }
