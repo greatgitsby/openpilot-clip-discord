@@ -39,6 +39,7 @@ def get_user_flags(route: str):
 
   with ThreadPoolExecutor(max_workers=WORKERS * 8) as executor:
     executor.map(process_segment, route.segments)
+
   return sorted(user_flags_at_time)
 
 
