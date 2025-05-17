@@ -10,9 +10,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 from openpilot.tools.lib.route import Route
 
+
+MAX_CLIP_LEN_S = int(os.environ.get('MAX_CLIP_LEN', '30'))
+WORKERS = int(os.environ.get('WORKERS', '1'))
+
 link_regex = re.compile(r'https?://\S+')
 route_regex = re.compile(r'\S{16}\/\S{8}--\S{10}')
 route_with_time_regex = re.compile(r'\S{16}\/\S{8}--\S{10}\/\d+\/\d+')
+
 
 @dataclass
 class ClipRequest:
@@ -22,37 +27,9 @@ class ClipRequest:
   is_bookmark: bool = False
   flag_time: int | None = None
 
-queue = asyncio.Queue[ClipRequest]()
+
 bot = discord.Bot()
-
-MAX_CLIP_LEN_S = int(os.environ.get('MAX_CLIP_LEN', '30'))
-WORKERS = int(os.environ.get('WORKERS', '1'))
-
-def get_user_flags(route: str):
-  route = Route(route)
-  user_flags_at_time = []
-
-  def process_segment(segment):
-    for event in segment.events:
-      if event['type'] == 'user_flag':
-        time_ms = event['route_offset_millis']
-        time_sec = round(time_ms / 1000)
-        user_flags_at_time.append(time_sec)
-
-  with ThreadPoolExecutor(max_workers=WORKERS * 8) as executor:
-    executor.map(process_segment, route.segments)
-
-  return sorted(user_flags_at_time)
-
-
-def format_route(route: str):
-  return f'[`{route}`](https://connect.comma.ai/{route})'
-
-
-def format_time(seconds: int) -> str:
-  minutes = seconds // 60
-  remaining_seconds = seconds % 60
-  return f'`{minutes:02d}:{remaining_seconds:02d}`'
+queue = asyncio.Queue[ClipRequest]()
 
 
 class VideoPreview(discord.ui.View):
@@ -75,6 +52,64 @@ class VideoPreview(discord.ui.View):
     
     await interaction.response.edit_message(view=self)
     await interaction.respond(content=content, file=self.vid)
+
+
+def format_route(route: str):
+  return f'[`{route}`](https://connect.comma.ai/{route})'
+
+
+def format_time(seconds: int) -> str:
+  minutes = seconds // 60
+  remaining_seconds = seconds % 60
+  return f'`{minutes:02d}:{remaining_seconds:02d}`'
+
+
+def get_route(route: str) -> str | None:
+  link = link_regex.match(route)
+  if link:
+    path = urlparse(link.group()).path
+    route = route_regex.match(path[1:])
+  else:
+    route = route_regex.match(route)
+
+  if not route:
+    return None
+
+  return route.group()
+
+
+def get_route_and_time(route: str) -> tuple[str, int, int] | None:
+  link = link_regex.match(route)
+  if link:
+    path = urlparse(link.group()).path
+    route = route_with_time_regex.match(path[1:])
+  else:
+    route = route_with_time_regex.match(route)
+
+  if not route:
+    return None
+
+  route = route.group()
+  start_str, end_str = route.split('/')[2:]
+  start, end = int(start_str), int(end_str)
+  return route, start, end
+
+
+def get_user_flags(route: str):
+  route = Route(route)
+  user_flags_at_time = []
+
+  def process_segment(segment):
+    for event in segment.events:
+      if event['type'] == 'user_flag':
+        time_ms = event['route_offset_millis']
+        time_sec = round(time_ms / 1000)
+        user_flags_at_time.append(time_sec)
+
+  with ThreadPoolExecutor(max_workers=WORKERS * 8) as executor:
+    executor.map(process_segment, route.segments)
+
+  return sorted(user_flags_at_time)
 
 
 async def process_clip(ctx: discord.ApplicationContext, route: str, title: str, is_bookmark: bool = False, flag_time: int | None = None):
@@ -123,37 +158,6 @@ async def worker(name: str):
       await process_clip(request.ctx, request.route, request.title, request.is_bookmark, request.flag_time)
     finally:
       queue.task_done()
-
-
-def get_route_and_time(route: str) -> tuple[str, int, int] | None:
-  link = link_regex.match(route)
-  if link:
-    path = urlparse(link.group()).path
-    route = route_with_time_regex.match(path[1:])
-  else:
-    route = route_with_time_regex.match(route)
-
-  if not route:
-    return None
-
-  route = route.group()
-  start_str, end_str = route.split('/')[2:]
-  start, end = int(start_str), int(end_str)
-  return route, start, end
-
-
-def get_route(route: str) -> str | None:
-  link = link_regex.match(route)
-  if link:
-    path = urlparse(link.group()).path
-    route = route_regex.match(path[1:])
-  else:
-    route = route_regex.match(route)
-
-  if not route:
-    return None
-
-  return route.group()
 
 
 async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: str, is_bookmark: bool = False, flag_time: int | None = None):
