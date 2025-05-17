@@ -74,13 +74,13 @@ class ClipRequest:
     else:
       await self.ctx.edit(content=content)
 
-  async def post_success(self, file_path: Path):
-    file = discord.File(file_path)
-    view = VideoPreview(self, file)
+  async def post_success(self, video_file: discord.File):
+    view = VideoPreview(self, video_file)
+    video_file.reset()
     if self.is_bookmark:
-      await self.ctx.respond(content=self.message_content, file=file, view=view, ephemeral=True)
+      await self.ctx.respond(content=self.message_content, file=video_file, view=view, ephemeral=True)
     else:
-      await self.ctx.edit(content=self.message_content, file=file, view=view)
+      await self.ctx.edit(content=self.message_content, file=video_file, view=view)
 
   async def post_error(self, error_msg: str):
     error_content = f'clip of {self.formatted_route} failed due to unknown reason:\n\n```\n{error_msg}\n```'
@@ -92,10 +92,10 @@ queue = asyncio.Queue[ClipRequest]()
 
 
 class VideoPreview(discord.ui.View):
-  def __init__(self, request: ClipRequest, vid: discord.File):
+  def __init__(self, request: ClipRequest, video_file: discord.File):
     super().__init__(timeout=None)
     self.request = request
-    self.vid = vid
+    self.video_file = video_file
 
   @discord.ui.button(label='Post', style=discord.ButtonStyle.primary, emoji='▶️')
   async def post_button(self, button: discord.ui.Button, interaction: discord.Interaction):
@@ -104,8 +104,9 @@ class VideoPreview(discord.ui.View):
     button.style = discord.ButtonStyle.green
     button.disabled = True
     
+    self.video_file.reset()
+    await interaction.respond(content=self.request.message_content, file=self.video_file)
     await interaction.response.edit_message(view=self)
-    await interaction.respond(content=self.request.message_content, file=self.vid)
 
 
 
@@ -174,7 +175,8 @@ async def process_clip(request: ClipRequest):
       if proc.returncode != 0:
         await request.post_error(stderr.decode())
       else:
-        await request.post_success(path)
+        file = discord.File(open(path, 'rb'))
+        await request.post_success(file)
   except Exception as e:
     print('error processing clip', str(e))
     await request.post_error(str(e))
