@@ -75,7 +75,7 @@ class VideoPreview(discord.ui.View):
     button.disabled = True
     
     await interaction.response.edit_message(view=self)
-    asyncio.create_task(interaction.respond(content=content, file=self.vid))
+    await interaction.respond(content=content, file=self.vid)
 
 
 async def process_clip(ctx: discord.ApplicationContext, route: str, title: str, is_bookmark: bool = False, flag_time: int | None = None):
