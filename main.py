@@ -68,6 +68,23 @@ class ClipRequest:
   def output_file_name(self) -> str:
     return f'{self.route.replace("/", "-")}.mp4'
 
+  async def post_processing_message(self, content: str):
+    if self.is_bookmark:
+      await self.ctx.respond(content=content, ephemeral=True)
+    else:
+      await self.ctx.edit(content=content)
+
+  async def post_success(self, file: discord.File):
+    view = VideoPreview(self, file)
+    if self.is_bookmark:
+      await self.ctx.respond(content=self.message_content, file=file, view=view, ephemeral=True)
+    else:
+      await self.ctx.edit(content=self.message_content, file=file, view=view)
+
+  async def post_error(self, error_msg: str):
+    error_content = f'clip of {self.formatted_route} failed due to unknown reason:\n\n```\n{error_msg}\n```'
+    await self.post_processing_message(error_content)
+
 
 bot = discord.Bot()
 queue = asyncio.Queue[ClipRequest]()
@@ -143,7 +160,7 @@ def get_user_flags(route: str):
 async def process_clip(request: ClipRequest):
   print(f'{request.ctx.interaction.user.display_name} ({request.ctx.interaction.user.id}) clipping {request.route_with_time}' )
   if not request.is_bookmark:
-    await request.ctx.edit(content=f'clipping {request.formatted_route}')
+    await request.post_processing_message(f'clipping {request.formatted_route}')
   try:
     with TemporaryDirectory() as temp_dir:
       path = Path(os.path.join(temp_dir, request.output_file_name)).resolve()
@@ -154,23 +171,12 @@ async def process_clip(request: ClipRequest):
 
       stdout, stderr = await proc.communicate()
       if proc.returncode != 0:
-        error_msg = f'clip of {request.formatted_route} failed due to unknown reason:\n\n```\n{stderr.decode()}\n```'
-        if request.is_bookmark:
-          await request.ctx.respond(content=error_msg, ephemeral=True)
-        else:
-          await request.ctx.edit(content=error_msg)
+        await request.post_error(stderr.decode())
       else:
-        if request.is_bookmark:
-          await request.ctx.respond(content=request.message_content, file=discord.File(path), view=VideoPreview(request, discord.File(path)), ephemeral=True)
-        else:
-          await request.ctx.edit(content=request.message_content, file=discord.File(path), view=VideoPreview(request, discord.File(path)))
+        await request.post_success(discord.File(path))
   except Exception as e:
     print('error processing clip', str(e))
-    error_msg = f'clip of {request.formatted_route} failed due to unknown reason:\n\n```\n{str(e)}\n```'
-    if request.is_bookmark:
-      await request.ctx.respond(content=error_msg, ephemeral=True)
-    else:
-      await request.ctx.edit(content=error_msg)
+    await request.post_error(str(e))
 
 
 async def worker(name: str):
