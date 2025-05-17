@@ -11,7 +11,8 @@ from concurrent.futures import ThreadPoolExecutor
 from openpilot.tools.lib.route import Route
 
 link_regex = re.compile(r'https?://\S+')
-route_regex = re.compile(r'\S+/\S+--\S+/\d+/\d+')
+route_regex = re.compile(r'\S{16}\/\S{8}--\S{10}')
+route_with_time_regex = re.compile(r'\S{16}\/\S{8}--\S{10}\/\d+\/\d+')
 
 @dataclass
 class ClipRequest:
@@ -98,24 +99,40 @@ async def worker(name: str):
       queue.task_done()
 
 
-async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: str):
-  await ctx.defer(ephemeral=True)
-    
+async def get_route_and_time(ctx: discord.ApplicationContext, route: str):
   link = link_regex.match(route)
   if link:
-      path = urlparse(link.group()).path
-      route = route_regex.match(path[1:])
-      if not route:
-        await ctx.respond(content='no route found in the input provided')
-        return
+    path = urlparse(link.group()).path
+    route = route_with_time_regex.match(path[1:])
+    if not route:
+      await ctx.respond(content='no route found in the input provided')
+  else:
+    route = route_with_time_regex.match(route)
+    if not route:
+      await ctx.respond(content='no route found in the input provided')
+  route = route.group()
+  start_str, end_str = route.split('/')[2:]
+  start, end = int(start_str), int(end_str) 
+  return route, start, end
+
+
+async def get_route(ctx: discord.ApplicationContext, route: str):
+  link = link_regex.match(route)
+  if link:
+    path = urlparse(link.group()).path
+    route = route_regex.match(path[1:])
+    if not route:
+      await ctx.respond(content='no route found in the input provided')
   else:
     route = route_regex.match(route)
     if not route:
       await ctx.respond(content='no route found in the input provided')
-      return
-  route = route.group()
-  start_str, end_str = route.split('/')[2:]
-  start, end = int(start_str), int(end_str)
+  return route.group()
+
+
+async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: str):
+  await ctx.defer(ephemeral=True)
+  route, start, end = await get_route_and_time(ctx, route)
   if end - start > MAX_CLIP_LEN_S:
     await ctx.edit(content=f'cannot make a clip longer than {MAX_CLIP_LEN_S}s')
   else:
@@ -124,7 +141,7 @@ async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: st
 
 
 @bot.command(
-  description="get all user bookmarks",
+  description="clip your openpilot route bookmarks",
   integration_types={
     discord.IntegrationType.guild_install,
     discord.IntegrationType.user_install,
@@ -132,15 +149,18 @@ async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: st
 )
 @discord.option("route", type=str, description='the route or connect URL', required=True)
 async def bookmarks(ctx: discord.ApplicationContext, route: str):
+  before_flag_buffer = 10
+  after_flag_buffer = 5
   if ctx.author.bot:
     return
   await ctx.defer(ephemeral=True)
+  route = await get_route(ctx, route)
   flags = get_user_flags(route)
   msg = f'{len(flags)} flag{"" if len(flags) == 1 else "s"} during route `{route}`, processing them'
   for i in range(0, len(flags)):
     flag = flags[i]
-    route_w_time = f'{route}/{flag-10}/{flag+5}'
-    await queue.put((ctx, route_w_time, None, True,))
+    route_w_time = f'{route}/{flag-before_flag_buffer}/{flag+after_flag_buffer}'
+    await queue.put(ClipRequest(ctx, route_w_time, None))
   await ctx.respond(msg)
 
 
