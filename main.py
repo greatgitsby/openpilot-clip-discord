@@ -3,9 +3,9 @@ import discord
 import re
 import os
 from dataclasses import dataclass
+from tempfile import TemporaryDirectory
 from pathlib import Path
 from urllib.parse import urlparse
-from tempfile import TemporaryDirectory
 from concurrent.futures import ThreadPoolExecutor
 
 from openpilot.tools.lib.route import Route
@@ -16,9 +16,9 @@ route_with_time_regex = re.compile(r'\S{16}\/\S{8}--\S{10}\/\d+\/\d+')
 
 @dataclass
 class ClipRequest:
-  ctx: discord.ApplicationContext
-  route: str
-  title: str | None
+    ctx: discord.ApplicationContext
+    route: str
+    title: str | None
 
 queue = asyncio.Queue[ClipRequest]()
 bot = discord.Bot()
@@ -29,7 +29,7 @@ WORKERS = int(os.environ.get('WORKERS', '1'))
 def get_user_flags(route: str):
   route = Route(route)
   user_flags_at_time = []
-  
+
   def process_segment(segment):
     for event in segment.events:
       if event['type'] == 'user_flag':
@@ -99,69 +99,52 @@ async def worker(name: str):
       queue.task_done()
 
 
-async def get_route_and_time(ctx: discord.ApplicationContext, route: str):
+def get_route_and_time(route: str) -> tuple[str, int, int] | None:
   link = link_regex.match(route)
   if link:
     path = urlparse(link.group()).path
     route = route_with_time_regex.match(path[1:])
-    if not route:
-      await ctx.respond(content='no route found in the input provided')
   else:
     route = route_with_time_regex.match(route)
-    if not route:
-      await ctx.respond(content='no route found in the input provided')
+
+  if not route:
+    return None
+
   route = route.group()
   start_str, end_str = route.split('/')[2:]
-  start, end = int(start_str), int(end_str) 
+  start, end = int(start_str), int(end_str)
   return route, start, end
 
 
-async def get_route(ctx: discord.ApplicationContext, route: str):
+def get_route(route: str) -> str | None:
   link = link_regex.match(route)
   if link:
     path = urlparse(link.group()).path
     route = route_regex.match(path[1:])
-    if not route:
-      await ctx.respond(content='no route found in the input provided')
   else:
     route = route_regex.match(route)
-    if not route:
-      await ctx.respond(content='no route found in the input provided')
+
+  if not route:
+    return None
+
   return route.group()
 
 
 async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: str):
   await ctx.defer(ephemeral=True)
-  route, start, end = await get_route_and_time(ctx, route)
+  parsed = get_route_and_time(route)
+
+  if parsed is None:
+    await ctx.respond(content='please enter a valid route or connect URL')
+    return
+
+  route, start, end = parsed
   if end - start > MAX_CLIP_LEN_S:
     await ctx.edit(content=f'cannot make a clip longer than {MAX_CLIP_LEN_S}s')
-  else:
-    await ctx.edit(content=f'queued request, {queue.qsize()} in line ahead')
-    await queue.put(ClipRequest(ctx, route, title))
-
-
-@bot.command(
-  description="clip your openpilot route bookmarks",
-  integration_types={
-    discord.IntegrationType.guild_install,
-    discord.IntegrationType.user_install,
-  },
-)
-@discord.option("route", type=str, description='the route or connect URL', required=True)
-async def bookmarks(ctx: discord.ApplicationContext, route: str):
-  before_flag_buffer = 10
-  after_flag_buffer = 5
-  if ctx.author.bot:
     return
-  await ctx.defer(ephemeral=True)
-  route = await get_route(ctx, route)
-  flags = get_user_flags(route)
-  msg = f'{len(flags)} flag{"" if len(flags) == 1 else "s"} during route `{route}`, processing them'
-  for i in range(0, len(flags)):
-    flag = flags[i]
-    route_w_time = f'{route}/{flag-before_flag_buffer}/{flag+after_flag_buffer}'
-    await queue.put(ClipRequest(ctx, route_w_time, None))
-  await ctx.respond(msg)
+
+  await ctx.edit(content=f'queued request, {queue.qsize()} in line ahead')
+  await queue.put(ClipRequest(ctx, route, title))
 
 
 @bot.command(
@@ -177,6 +160,39 @@ async def clip(ctx: discord.ApplicationContext, route: str, title: str):
   if ctx.author.bot:
     return
   await preprocess_clip(ctx, route, title)
+
+
+@bot.command(
+  description="clip your openpilot route bookmarks",
+  integration_types={
+    discord.IntegrationType.guild_install,
+    discord.IntegrationType.user_install,
+  },
+)
+@discord.option("route", type=str, description='the route or connect URL', required=True)
+async def bookmarks(ctx: discord.ApplicationContext, route: str):
+  if ctx.author.bot:
+    return
+
+  before_flag_buffer = 10
+  after_flag_buffer = 5
+
+  await ctx.defer(ephemeral=True)
+  route = get_route(route)
+
+  if route is None:
+    await ctx.respond(content='please enter a valid route or connect URL')
+    return
+
+  flags = get_user_flags(route)
+  msg = f'{len(flags)} flag{"" if len(flags) == 1 else "s"} during route `{route}`, processing them'
+
+  for i in range(0, len(flags)):
+    flag = flags[i]
+    route_w_time = f'{route}/{flag-before_flag_buffer}/{flag+after_flag_buffer}'
+    await queue.put(ClipRequest(ctx, route_w_time, None))
+
+  await ctx.respond(msg)
 
 
 @bot.listen(once=True)
