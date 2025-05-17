@@ -37,6 +37,7 @@ def get_user_flags(route: str):
       if event['type'] == 'user_flag':
         time_ms = event['route_offset_millis']
         time_sec = round(time_ms / 1000)
+        time_sec -= 1 # on video, looks like bookmark actually happens 1s before the time
         user_flags_at_time.append(time_sec)
 
   with ThreadPoolExecutor(max_workers=WORKERS * 8) as executor:
@@ -56,21 +57,25 @@ def format_time(seconds: int) -> str:
 
 
 class VideoPreview(discord.ui.View):
-  def __init__(self, ctx: discord.ApplicationContext, route: str, vid: discord.File):
+  def __init__(self, request: ClipRequest, vid: discord.File):
     super().__init__(timeout=None)
-    self.ctx = ctx
-    self.route = route
+    self.request = request
     self.vid = vid
 
   @discord.ui.button(label='Post', style=discord.ButtonStyle.primary, emoji='▶️')
   async def post_button(self, button: discord.ui.Button, interaction: discord.Interaction):
     user_id = interaction.user.id
-    await interaction.response.send_message(content=f'<@{user_id}> shared a clip: {format_route(self.route)}', file=self.vid)
+    content = f'<@{user_id}> shared a clip: {format_route(self.request.route)}'
+    if self.request.flag_time is not None:
+      content += f', bookmarked at {format_time(self.request.flag_time)}'
+    
     button.label = 'Posted'
     button.emoji = '✅'
     button.style = discord.ButtonStyle.green
     button.disabled = True
-    await self.ctx.edit(view=self)
+    
+    await interaction.response.send_message(content=content, file=self.vid)
+    await interaction.edit_message(view=self)
 
 
 async def process_clip(ctx: discord.ApplicationContext, route: str, title: str, is_bookmark: bool = False, flag_time: int | None = None):
@@ -97,10 +102,11 @@ async def process_clip(ctx: discord.ApplicationContext, route: str, title: str, 
         if flag_time is not None:
           content += f', bookmarked at {format_time(flag_time)}'
         content += ':'
+        request = ClipRequest(ctx, route, title, is_bookmark, flag_time)
         if is_bookmark:
-          await ctx.respond(content=content, file=discord.File(path), view=VideoPreview(ctx, route, discord.File(path)), ephemeral=True)
+          await ctx.respond(content=content, file=discord.File(path), view=VideoPreview(request, discord.File(path)), ephemeral=True)
         else:
-          await ctx.edit(content=content, file=discord.File(path), view=VideoPreview(ctx, route, discord.File(path)))
+          await ctx.edit(content=content, file=discord.File(path), view=VideoPreview(request, discord.File(path)))
   except Exception as e:
     print('error processing clip', str(e))
     error_msg = f'clip of {format_route(route)} failed due to unknown reason:\n\n```\n{str(e)}\n```'
@@ -206,7 +212,7 @@ async def bookmarks(ctx: discord.ApplicationContext, route: str):
     return
 
   flags = get_user_flags(route)
-  msg = f'{len(flags)} bookmark{"" if len(flags) == 1 else "s"} during route {format_route(route)}, processing them...\n'
+  msg = f'{len(flags)} bookmark{"" if len(flags) == 1 else "s"} during route {format_route(route)}, processing {"it" if len(flags) == 1 else "them"}...\n'
 
   clip_details = []
   for i in range(0, len(flags)):
