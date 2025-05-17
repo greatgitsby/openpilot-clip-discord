@@ -37,7 +37,6 @@ def get_user_flags(route: str):
       if event['type'] == 'user_flag':
         time_ms = event['route_offset_millis']
         time_sec = round(time_ms / 1000)
-        time_sec -= 1 # on video, looks like bookmark actually happens 1s before the time
         user_flags_at_time.append(time_sec)
 
   with ThreadPoolExecutor(max_workers=WORKERS * 8) as executor:
