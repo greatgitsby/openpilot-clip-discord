@@ -3,9 +3,11 @@ import discord
 import re
 import requests
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 from tempfile import TemporaryDirectory
+from concurrent.futures import ThreadPoolExecutor
 
 from openpilot.tools.lib.route import Route
 
@@ -18,22 +20,28 @@ bot = discord.Bot()
 MAX_CLIP_LEN_S = int(os.environ.get('MAX_CLIP_LEN', '30'))
 WORKERS = int(os.environ.get('WORKERS', '1'))
 
+@dataclass
+class ClipRequest:
+  ctx: discord.ApplicationContext
+  route: str
+  title: str
+  start: int
+  end: int
 
 def get_user_flags(route: str):
   route = Route(route)
-  meta = route.metadata
-  url = meta['url']
   user_flags_at_time = []
-  for segment in route.segments:
-    num = segment.name.segment_num
-    event_url = url + '/' + str(num) + '/events.json'
-    resp = requests.get(event_url).json()
-    for event in resp:
+  
+  def process_segment(segment):
+    for event in segment.events:
       if event['type'] == 'user_flag':
         time_ms = event['route_offset_millis']
         time_sec = round(time_ms / 1000)
         user_flags_at_time.append(time_sec)
-  return user_flags_at_time
+
+  with ThreadPoolExecutor(max_workers=WORKERS * 8) as executor:
+    executor.map(process_segment, route.segments)
+  return sorted(user_flags_at_time)
 
 
 def format_route(route: str):
@@ -131,11 +139,11 @@ async def bookmarks(ctx: discord.ApplicationContext, route: str):
     return
   await ctx.defer(ephemeral=True)
   flags = get_user_flags(route)
-  msg = f'{len(flags)} flag{"" if len(flags) == 1 else "s"} during route `{route}`, queued all for processing'
+  msg = f'{len(flags)} flag{"" if len(flags) == 1 else "s"} during route `{route}`, processing them'
   for i in range(0, len(flags)):
     flag = flags[i]
     route_w_time = f'{route}/{flag-10}/{flag+5}'
-    await queue.put((ctx, route_w_time, f'flag {i+1}', True,))
+    await queue.put((ctx, route_w_time, None, True,))
   await ctx.respond(msg)
 
 
