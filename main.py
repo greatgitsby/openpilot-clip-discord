@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from openpilot.tools.lib.route import Route
 
 
+CONNECT_URL = 'https://connect.comma.ai'
 MAX_CLIP_LEN_S = int(os.environ.get('MAX_CLIP_LEN', '30'))
 WORKERS = int(os.environ.get('WORKERS', '1'))
 
@@ -19,13 +20,53 @@ route_regex = re.compile(r'\S{16}\/\S{8}--\S{10}')
 route_with_time_regex = re.compile(r'\S{16}\/\S{8}--\S{10}\/\d+\/\d+')
 
 
+def format_route(route_with_time: str) -> str:
+  return f'[`{route_with_time}`]({CONNECT_URL}/{route_with_time})'
+
+
 @dataclass
 class ClipRequest:
   ctx: discord.ApplicationContext
   route: str
   title: str | None
-  is_bookmark: bool = False
-  flag_time: int | None = None
+  start_time: int
+  end_time: int
+  bookmark_time_sec: int | None = None
+
+  @property
+  def bookmark_time_str(self) -> str:
+    if not self.is_bookmark:
+      raise NotImplementedError('only bookmark requests have bookmark time')
+    minutes = self.bookmark_time_sec // 60
+    remaining_seconds = self.bookmark_time_sec % 60
+    return f'{minutes:02d}:{remaining_seconds:02d}'
+
+  @property
+  def formatted_bookmark_time(self) -> str:
+    return f'[`{self.bookmark_time_str}`]({CONNECT_URL}/{self.route_with_time})'
+
+  @property
+  def formatted_route(self) -> str:
+    return format_route(self.route_with_time)
+
+  @property
+  def message_content(self) -> str:
+    content = f'<@{self.ctx.interaction.user.id}> shared a clip: {self.formatted_route}'
+    if self.is_bookmark:
+      content += f', bookmarked at {self.bookmark_time_str}'
+    return content
+
+  @property
+  def route_with_time(self) -> str:
+    return f'{self.route}/{self.start_time}/{self.end_time}'
+
+  @property
+  def is_bookmark(self) -> bool:
+    return self.bookmark_time_sec is not None
+
+  @property
+  def output_file_name(self) -> str:
+    return f'{self.route.replace("/", "-")}.mp4'
 
 
 bot = discord.Bot()
@@ -40,28 +81,14 @@ class VideoPreview(discord.ui.View):
 
   @discord.ui.button(label='Post', style=discord.ButtonStyle.primary, emoji='▶️')
   async def post_button(self, button: discord.ui.Button, interaction: discord.Interaction):
-    user_id = interaction.user.id
-    content = f'<@{user_id}> shared a clip: {format_route(self.request.route)}'
-    if self.request.flag_time is not None:
-      content += f', bookmarked at {format_time(self.request.flag_time)}'
-    
     button.label = 'Posted'
     button.emoji = '✅'
     button.style = discord.ButtonStyle.green
     button.disabled = True
     
     await interaction.response.edit_message(view=self)
-    await interaction.respond(content=content, file=self.vid)
+    await interaction.respond(content=self.request.message_content, file=self.vid)
 
-
-def format_route(route: str):
-  return f'[`{route}`](https://connect.comma.ai/{route})'
-
-
-def format_time(seconds: int) -> str:
-  minutes = seconds // 60
-  remaining_seconds = seconds % 60
-  return f'`{minutes:02d}:{remaining_seconds:02d}`'
 
 
 def get_route(route: str) -> str | None:
@@ -91,6 +118,7 @@ def get_route_and_time(route: str) -> tuple[str, int, int] | None:
 
   route = route.group()
   start_str, end_str = route.split('/')[2:]
+  route = '/'.join(route.split('/')[:2])
   start, end = int(start_str), int(end_str)
   return route, start, end
 
@@ -112,42 +140,37 @@ def get_user_flags(route: str):
   return sorted(user_flags_at_time)
 
 
-async def process_clip(ctx: discord.ApplicationContext, route: str, title: str, is_bookmark: bool = False, flag_time: int | None = None):
-  print(f'{ctx.interaction.user.display_name} ({ctx.interaction.user.id}) clipping {route}' )
-  if not is_bookmark:
-    await ctx.edit(content=f'clipping {format_route(route)}')
+async def process_clip(request: ClipRequest):
+  print(f'{request.ctx.interaction.user.display_name} ({request.ctx.interaction.user.id}) clipping {request.route_with_time}' )
+  if not request.is_bookmark:
+    await request.ctx.edit(content=f'clipping {request.formatted_route}')
   try:
     with TemporaryDirectory() as temp_dir:
-      path = Path(os.path.join(temp_dir, f'{route.replace("/", "-")}.mp4')).resolve()
-      args = ['openpilot/tools/clip/run.py', route, '-o', path, '-f', '9']
-      if title:
-        args.extend(['-t', title])
+      path = Path(os.path.join(temp_dir, request.output_file_name)).resolve()
+      args = ['openpilot/tools/clip/run.py', request.route_with_time, '-o', path, '-f', '9']
+      if request.title:
+        args.extend(['-t', request.title])
       proc = await asyncio.create_subprocess_exec('openpilot/.venv/bin/python3', *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
 
       stdout, stderr = await proc.communicate()
       if proc.returncode != 0:
-        error_msg = f'clip of {format_route(route)} failed due to unknown reason:\n\n```\n{stderr.decode()}\n```'
-        if is_bookmark:
-          await ctx.respond(content=error_msg, ephemeral=True)
+        error_msg = f'clip of {request.formatted_route} failed due to unknown reason:\n\n```\n{stderr.decode()}\n```'
+        if request.is_bookmark:
+          await request.ctx.respond(content=error_msg, ephemeral=True)
         else:
-          await ctx.edit(content=error_msg)
+          await request.ctx.edit(content=error_msg)
       else:
-        content = f'clipped {format_route(route)}'
-        if flag_time is not None:
-          content += f', bookmarked at {format_time(flag_time)}'
-        content += ':'
-        request = ClipRequest(ctx, route, title, is_bookmark, flag_time)
-        if is_bookmark:
-          await ctx.respond(content=content, file=discord.File(path), view=VideoPreview(request, discord.File(path)), ephemeral=True)
+        if request.is_bookmark:
+          await request.ctx.respond(content=request.message_content, file=discord.File(path), view=VideoPreview(request, discord.File(path)), ephemeral=True)
         else:
-          await ctx.edit(content=content, file=discord.File(path), view=VideoPreview(request, discord.File(path)))
+          await request.ctx.edit(content=request.message_content, file=discord.File(path), view=VideoPreview(request, discord.File(path)))
   except Exception as e:
     print('error processing clip', str(e))
-    error_msg = f'clip of {format_route(route)} failed due to unknown reason:\n\n```\n{str(e)}\n```'
-    if is_bookmark:
-      await ctx.respond(content=error_msg, ephemeral=True)
+    error_msg = f'clip of {request.formatted_route} failed due to unknown reason:\n\n```\n{str(e)}\n```'
+    if request.is_bookmark:
+      await request.ctx.respond(content=error_msg, ephemeral=True)
     else:
-      await ctx.edit(content=error_msg)
+      await request.ctx.edit(content=error_msg)
 
 
 async def worker(name: str):
@@ -155,12 +178,21 @@ async def worker(name: str):
   while True:
     request = await queue.get()
     try:
-      await process_clip(request.ctx, request.route, request.title, request.is_bookmark, request.flag_time)
+      await process_clip(request)
     finally:
       queue.task_done()
 
 
-async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: str, is_bookmark: bool = False, flag_time: int | None = None):
+@bot.command(
+  description="clip an openpilot route",
+  integration_types={
+    discord.IntegrationType.guild_install,
+    discord.IntegrationType.user_install,
+  },
+)
+@discord.option("route", type=str, description='the route or connect URL with timing info', required=True)
+@discord.option("title", type=str, description='an optional title to overlay', min_length=1, max_length=80, required=False)
+async def clip(ctx: discord.ApplicationContext, route: str, title: str):
   await ctx.defer(ephemeral=True)
   parsed = get_route_and_time(route)
 
@@ -174,22 +206,13 @@ async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: st
     return
 
   await ctx.edit(content=f'queued request, {queue.qsize()} in line ahead')
-  await queue.put(ClipRequest(ctx, route, title, is_bookmark, flag_time))
-
-
-@bot.command(
-  description="clip an openpilot route",
-  integration_types={
-    discord.IntegrationType.guild_install,
-    discord.IntegrationType.user_install,
-  },
-)
-@discord.option("route", type=str, description='the route or connect URL with timing info', required=True)
-@discord.option("title", type=str, description='an optional title to overlay', min_length=1, max_length=80, required=False)
-async def clip(ctx: discord.ApplicationContext, route: str, title: str):
-  if ctx.author.bot:
-    return
-  await preprocess_clip(ctx, route, title, False, None)
+  await queue.put(ClipRequest(
+    ctx=ctx,
+    route=route,
+    title=title,
+    start_time=start,
+    end_time=end,
+  ))
 
 
 @bot.command(
@@ -220,11 +243,18 @@ async def bookmarks(ctx: discord.ApplicationContext, route: str):
   clip_details = []
   for i in range(0, len(flags)):
     flag = flags[i]
-    route_w_time = f'{route}/{flag-before_flag_buffer}/{flag+after_flag_buffer}'
-    await queue.put(ClipRequest(ctx, route_w_time, None, True, flag))
-    clip_details.append(f'* clip {i+1}/{len(flags)}, bookmark at {format_time(flag)}')
+    request = ClipRequest(
+      ctx=ctx,
+      route=route,
+      title=None,
+      start_time=flag-before_flag_buffer,
+      end_time=flag+after_flag_buffer,
+      bookmark_time_sec=flag
+    )
+    await queue.put(request)
+    clip_details.append(request.formatted_bookmark_time)
 
-  await ctx.respond(f'{msg}\n' + '\n'.join(clip_details))
+  await ctx.respond(f'{msg}\n' + ', '.join(clip_details))
 
 
 @bot.listen(once=True)
