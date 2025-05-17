@@ -2,6 +2,7 @@ import asyncio
 import discord
 import re
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 from tempfile import TemporaryDirectory
@@ -12,7 +13,13 @@ from openpilot.tools.lib.route import Route
 link_regex = re.compile(r'https?://\S+')
 route_regex = re.compile(r'\S+/\S+--\S+/\d+/\d+')
 
-queue = asyncio.Queue()
+@dataclass
+class ClipRequest:
+  ctx: discord.ApplicationContext
+  route: str
+  title: str | None
+
+queue = asyncio.Queue[ClipRequest]()
 bot = discord.Bot()
 
 MAX_CLIP_LEN_S = int(os.environ.get('MAX_CLIP_LEN', '30'))
@@ -84,9 +91,9 @@ async def process_clip(ctx: discord.ApplicationContext, route: str, title: str, 
 async def worker(name: str):
   print(f'started worker {name}')
   while True:
-    ctx, route, title, new_msg = await queue.get()
+    request = await queue.get()
     try:
-      await process_clip(ctx, route, title, new_msg)
+      await process_clip(request.ctx, request.route, request.title)
     finally:
       queue.task_done()
 
@@ -113,7 +120,7 @@ async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: st
     await ctx.edit(content=f'cannot make a clip longer than {MAX_CLIP_LEN_S}s')
   else:
     await ctx.edit(content=f'queued request, {queue.qsize()} in line ahead')
-    await queue.put((ctx, route, title, False,))
+    await queue.put(ClipRequest(ctx, route, title))
 
 
 @bot.command(
