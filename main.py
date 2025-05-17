@@ -175,7 +175,7 @@ async def process_clip(request: ClipRequest):
       if proc.returncode != 0:
         await request.post_error(stderr.decode())
       else:
-        file = discord.File(open(path, 'rb'))
+        file = discord.File(path)
         await request.post_success(file)
   except Exception as e:
     print('error processing clip', str(e))
