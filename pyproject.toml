@@ -13,4 +13,4 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-openpilot = { path = "./openpilot" }
+openpilot = { path = "openpilot" }
