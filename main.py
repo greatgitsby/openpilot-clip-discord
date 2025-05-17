@@ -19,6 +19,8 @@ class ClipRequest:
   ctx: discord.ApplicationContext
   route: str
   title: str | None
+  is_bookmark: bool = False
+  flag_time: int | None = None
 
 queue = asyncio.Queue[ClipRequest]()
 bot = discord.Bot()
@@ -47,6 +49,12 @@ def format_route(route: str):
   return f'[`{route}`](https://connect.comma.ai/{route})'
 
 
+def format_time(seconds: int) -> str:
+  minutes = seconds // 60
+  remaining_seconds = seconds % 60
+  return f'`{minutes:02d}:{remaining_seconds:02d}`'
+
+
 class VideoPreview(discord.ui.View):
   def __init__(self, ctx: discord.ApplicationContext, route: str, vid: discord.File):
     super().__init__(timeout=None)
@@ -65,9 +73,9 @@ class VideoPreview(discord.ui.View):
     await self.ctx.edit(view=self)
 
 
-async def process_clip(ctx: discord.ApplicationContext, route: str, title: str, new_msg: bool = False):
+async def process_clip(ctx: discord.ApplicationContext, route: str, title: str, is_bookmark: bool = False, flag_time: int | None = None):
   print(f'{ctx.interaction.user.display_name} ({ctx.interaction.user.id}) clipping {route}' )
-  if not new_msg:
+  if not is_bookmark:
     await ctx.edit(content=f'clipping {format_route(route)}')
   try:
     with TemporaryDirectory() as temp_dir:
@@ -79,15 +87,27 @@ async def process_clip(ctx: discord.ApplicationContext, route: str, title: str, 
 
       stdout, stderr = await proc.communicate()
       if proc.returncode != 0:
-        await ctx.edit(content=f'clip of {format_route(route)} failed due to unknown reason:\n\n```\n{stderr.decode()}\n```')
-      else:
-        if new_msg:
-          await ctx.respond(ephemeral=True, content=f'clipped {format_route(route)}:', file=discord.File(path), view=VideoPreview(ctx, route, discord.File(path)))
+        error_msg = f'clip of {format_route(route)} failed due to unknown reason:\n\n```\n{stderr.decode()}\n```'
+        if is_bookmark:
+          await ctx.respond(content=error_msg, ephemeral=True)
         else:
-          await ctx.edit(content=f'clipped {format_route(route)}:', file=discord.File(path), view=VideoPreview(ctx, route, discord.File(path)))
+          await ctx.edit(content=error_msg)
+      else:
+        content = f'clipped {format_route(route)}'
+        if flag_time is not None:
+          content += f', bookmarked at {format_time(flag_time)}'
+        content += ':'
+        if is_bookmark:
+          await ctx.respond(content=content, file=discord.File(path), view=VideoPreview(ctx, route, discord.File(path)), ephemeral=True)
+        else:
+          await ctx.edit(content=content, file=discord.File(path), view=VideoPreview(ctx, route, discord.File(path)))
   except Exception as e:
     print('error processing clip', str(e))
-    await ctx.edit(content=f'clip of {format_route(route)} failed due to unknown reason:\n\n```\n{str(e)}\n```')
+    error_msg = f'clip of {format_route(route)} failed due to unknown reason:\n\n```\n{str(e)}\n```'
+    if is_bookmark:
+      await ctx.respond(content=error_msg, ephemeral=True)
+    else:
+      await ctx.edit(content=error_msg)
 
 
 async def worker(name: str):
@@ -95,7 +115,7 @@ async def worker(name: str):
   while True:
     request = await queue.get()
     try:
-      await process_clip(request.ctx, request.route, request.title)
+      await process_clip(request.ctx, request.route, request.title, request.is_bookmark, request.flag_time)
     finally:
       queue.task_done()
 
@@ -131,7 +151,7 @@ def get_route(route: str) -> str | None:
   return route.group()
 
 
-async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: str):
+async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: str, is_bookmark: bool = False, flag_time: int | None = None):
   await ctx.defer(ephemeral=True)
   parsed = get_route_and_time(route)
 
@@ -145,7 +165,7 @@ async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: st
     return
 
   await ctx.edit(content=f'queued request, {queue.qsize()} in line ahead')
-  await queue.put(ClipRequest(ctx, route, title))
+  await queue.put(ClipRequest(ctx, route, title, is_bookmark, flag_time))
 
 
 @bot.command(
@@ -160,7 +180,7 @@ async def preprocess_clip(ctx: discord.ApplicationContext, route: str, title: st
 async def clip(ctx: discord.ApplicationContext, route: str, title: str):
   if ctx.author.bot:
     return
-  await preprocess_clip(ctx, route, title)
+  await preprocess_clip(ctx, route, title, False, None)
 
 
 @bot.command(
@@ -186,14 +206,16 @@ async def bookmarks(ctx: discord.ApplicationContext, route: str):
     return
 
   flags = get_user_flags(route)
-  msg = f'{len(flags)} flag{"" if len(flags) == 1 else "s"} during route `{route}`, processing them'
+  msg = f'{len(flags)} bookmark{"" if len(flags) == 1 else "s"} during route {format_route(route)}, processing them...\n'
 
+  clip_details = []
   for i in range(0, len(flags)):
     flag = flags[i]
     route_w_time = f'{route}/{flag-before_flag_buffer}/{flag+after_flag_buffer}'
-    await queue.put(ClipRequest(ctx, route_w_time, None))
+    await queue.put(ClipRequest(ctx, route_w_time, None, True, flag))
+    clip_details.append(f'clip {i+1}/{len(flags)} with bookmark at {format_time(flag)}')
 
-  await ctx.respond(msg)
+  await ctx.respond(f'{msg}\n' + '\n'.join(clip_details))
 
 
 @bot.listen(once=True)
