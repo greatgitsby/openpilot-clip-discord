@@ -244,7 +244,12 @@ async def bookmarks(ctx: discord.ApplicationContext, route: str):
     await ctx.respond(content='please enter a valid route or connect URL')
     return
 
-  flags = get_user_flags(route)
+  try:
+    flags = get_user_flags(route)
+  except Exception as e:
+    await ctx.respond(content=f'error getting bookmarks:\n\n```\n{str(e)}\n```', ephemeral=True)
+    return
+
   if len(flags) == 0:
     await ctx.respond(content='no bookmarks found, try creating a /clip instead!', ephemeral=True)
     return
