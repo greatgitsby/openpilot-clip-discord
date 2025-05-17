@@ -16,9 +16,9 @@ route_with_time_regex = re.compile(r'\S{16}\/\S{8}--\S{10}\/\d+\/\d+')
 
 @dataclass
 class ClipRequest:
-    ctx: discord.ApplicationContext
-    route: str
-    title: str | None
+  ctx: discord.ApplicationContext
+  route: str
+  title: str | None
 
 queue = asyncio.Queue[ClipRequest]()
 bot = discord.Bot()
