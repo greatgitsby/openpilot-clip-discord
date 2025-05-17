@@ -74,8 +74,8 @@ class VideoPreview(discord.ui.View):
     button.style = discord.ButtonStyle.green
     button.disabled = True
     
-    await interaction.response.send_message(content=content, file=self.vid)
-    await interaction.edit_message(view=self)
+    await interaction.response.edit_message(view=self)
+    asyncio.create_task(interaction.respond(content=content, file=self.vid))
 
 
 async def process_clip(ctx: discord.ApplicationContext, route: str, title: str, is_bookmark: bool = False, flag_time: int | None = None):
@@ -219,7 +219,7 @@ async def bookmarks(ctx: discord.ApplicationContext, route: str):
     flag = flags[i]
     route_w_time = f'{route}/{flag-before_flag_buffer}/{flag+after_flag_buffer}'
     await queue.put(ClipRequest(ctx, route_w_time, None, True, flag))
-    clip_details.append(f'clip {i+1}/{len(flags)} with bookmark at {format_time(flag)}')
+    clip_details.append(f'* clip {i+1}/{len(flags)}, bookmark at {format_time(flag)}')
 
   await ctx.respond(f'{msg}\n' + '\n'.join(clip_details))
 
