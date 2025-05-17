@@ -245,6 +245,10 @@ async def bookmarks(ctx: discord.ApplicationContext, route: str):
     return
 
   flags = get_user_flags(route)
+  if len(flags) == 0:
+    await ctx.respond(content='no bookmarks found, try creating a /clip instead!', ephemeral=True)
+    return
+
   msg = f'{len(flags)} bookmark{"" if len(flags) == 1 else "s"} during route {format_route(route)}, processing {"it" if len(flags) == 1 else "them"}...\n'
 
   clip_details = []
