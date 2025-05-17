@@ -1,9 +1,7 @@
 import asyncio
 import discord
 import re
-import requests
 import os
-from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 from tempfile import TemporaryDirectory
@@ -19,14 +17,6 @@ bot = discord.Bot()
 
 MAX_CLIP_LEN_S = int(os.environ.get('MAX_CLIP_LEN', '30'))
 WORKERS = int(os.environ.get('WORKERS', '1'))
-
-@dataclass
-class ClipRequest:
-  ctx: discord.ApplicationContext
-  route: str
-  title: str
-  start: int
-  end: int
 
 def get_user_flags(route: str):
   route = Route(route)
