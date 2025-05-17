@@ -74,7 +74,8 @@ class ClipRequest:
     else:
       await self.ctx.edit(content=content)
 
-  async def post_success(self, file: discord.File):
+  async def post_success(self, file_path: Path):
+    file = discord.File(file_path)
     view = VideoPreview(self, file)
     if self.is_bookmark:
       await self.ctx.respond(content=self.message_content, file=file, view=view, ephemeral=True)
