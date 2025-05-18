@@ -234,8 +234,8 @@ async def bookmarks(ctx: discord.ApplicationContext, route: str):
   if ctx.author.bot:
     return
 
-  before_flag_buffer = 1 
-  after_flag_buffer = 1
+  before_flag_buffer = 10
+  after_flag_buffer = 5
 
   await ctx.defer(ephemeral=True)
   route = get_route(route)
