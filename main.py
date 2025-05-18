@@ -104,10 +104,9 @@ class VideoPreview(discord.ui.View):
     button.style = discord.ButtonStyle.green
     button.disabled = True
     
+    await interaction.edit(view=self)
     self.video_file.reset()
-    await interaction.respond(content=self.request.message_content, file=self.video_file)
-    await interaction.response.edit_message(view=self)
-
+    await interaction.followup.send(content=self.request.message_content, file=self.video_file)
 
 
 def get_route(route: str) -> str | None:
@@ -235,24 +234,24 @@ async def bookmarks(ctx: discord.ApplicationContext, route: str):
   if ctx.author.bot:
     return
 
-  before_flag_buffer = 10
-  after_flag_buffer = 5
+  before_flag_buffer = 1 
+  after_flag_buffer = 1
 
   await ctx.defer(ephemeral=True)
   route = get_route(route)
 
   if route is None:
-    await ctx.respond(content='please enter a valid route or connect URL')
+    await ctx.edit(content='please enter a valid route or connect URL')
     return
 
   try:
     flags = get_user_flags(route)
   except Exception as e:
-    await ctx.respond(content=f'error getting bookmarks:\n\n```\n{str(e)}\n```', ephemeral=True)
+    await ctx.edit(content=f'error getting bookmarks:\n\n```\n{str(e)}\n```')
     return
 
   if len(flags) == 0:
-    await ctx.respond(content='no bookmarks found, try creating a /clip instead!', ephemeral=True)
+    await ctx.edit(content='no bookmarks found, try creating a /clip instead!')
     return
 
   msg = f'{len(flags)} bookmark{"" if len(flags) == 1 else "s"} during route {format_route(route)}, processing {"it" if len(flags) == 1 else "them"}...\n'
@@ -271,7 +270,7 @@ async def bookmarks(ctx: discord.ApplicationContext, route: str):
     await queue.put(request)
     clip_details.append(request.formatted_bookmark_time)
 
-  await ctx.respond(f'{msg}\n' + ', '.join(clip_details))
+  await ctx.edit(content=f'{msg}\n' + ', '.join(clip_details))
 
 
 @bot.listen(once=True)
