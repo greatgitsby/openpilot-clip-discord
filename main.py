@@ -165,7 +165,7 @@ async def process_clip(request: ClipRequest):
   try:
     with TemporaryDirectory() as temp_dir:
       path = Path(os.path.join(temp_dir, request.output_file_name)).resolve()
-      args = ['openpilot/tools/clip/run.py', request.route_with_time, '-o', path, '-f', '9']
+      args = ['openpilot/tools/clip/run.py', request.route_with_time, '-o', path, '-f', '9', '--big']
       if request.title:
         args.extend(['-t', request.title])
       proc = await asyncio.create_subprocess_exec('openpilot/.venv/bin/python3', *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)

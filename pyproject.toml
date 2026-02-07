@@ -3,7 +3,7 @@ name = "openpilot-replay-bot"
 version = "0.1.0"
 description = "Clip openpilot"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12.3"
 dependencies = [
     "openpilot",
     "openpilot[dev]",
