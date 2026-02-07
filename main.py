@@ -2,6 +2,9 @@ import asyncio
 import discord
 import re
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 from dataclasses import dataclass
 from tempfile import TemporaryDirectory
 from pathlib import Path
