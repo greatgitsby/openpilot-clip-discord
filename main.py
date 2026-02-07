@@ -9,9 +9,12 @@ load_dotenv()
 
 logging.basicConfig(
   level=logging.DEBUG,
-  format='%(asctime)s %(levelname)s [%(name)s] %(message)s',
+  format='%(asctime)s.%(msecs)03d %(levelname)s [%(name)s] %(message)s',
   datefmt='%Y-%m-%d %H:%M:%S'
 )
+logging.getLogger('discord').setLevel(logging.INFO)
+logging.getLogger('discord.http').setLevel(logging.INFO)
+logging.getLogger('discord.gateway').setLevel(logging.INFO)
 logger = logging.getLogger('openpilot-clip')
 from dataclasses import dataclass
 from tempfile import TemporaryDirectory
