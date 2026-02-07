@@ -2,9 +2,17 @@ import asyncio
 import discord
 import re
 import os
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logging.basicConfig(
+  level=logging.DEBUG,
+  format='%(asctime)s %(levelname)s [%(name)s] %(message)s',
+  datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger('openpilot-clip')
 from dataclasses import dataclass
 from tempfile import TemporaryDirectory
 from pathlib import Path
@@ -162,7 +170,8 @@ def get_user_flags(route: str):
 
 
 async def process_clip(request: ClipRequest):
-  print(f'{request.ctx.interaction.user.display_name} ({request.ctx.interaction.user.id}) clipping {request.route_with_time}' )
+  user = request.ctx.interaction.user
+  logger.info('clip_start user_id=%s user=%s route=%s', user.id, user.display_name, request.route_with_time)
   if not request.is_bookmark:
     await request.post_processing_message(f'clipping {request.formatted_route}')
   try:
@@ -171,22 +180,26 @@ async def process_clip(request: ClipRequest):
       args = ['openpilot/tools/clip/run.py', request.route_with_time, '-o', path, '-f', '9', '--big']
       if request.title:
         args.extend(['-t', request.title])
+      logger.debug('subprocess_exec args=%s', args)
       proc = await asyncio.create_subprocess_exec('openpilot/.venv/bin/python3', *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
 
       stdout, stderr = await proc.communicate()
       if proc.returncode != 0:
+        logger.error('clip_failed route=%s returncode=%s stderr=%s', request.route_with_time, proc.returncode, stderr.decode())
         await request.post_error(stderr.decode())
       else:
+        logger.info('clip_success route=%s output=%s', request.route_with_time, path)
         await request.post_success(discord.File(path))
   except Exception as e:
-    print('error processing clip', str(e))
+    logger.exception('clip_exception route=%s', request.route_with_time)
     await request.post_error(str(e))
 
 
 async def worker(name: str):
-  print(f'started worker {name}')
+  logger.info('worker_started name=%s', name)
   while True:
     request = await queue.get()
+    logger.debug('worker_dequeued worker=%s route=%s queue_size=%d', name, request.route_with_time, queue.qsize())
     try:
       await process_clip(request)
     finally:
@@ -207,14 +220,17 @@ async def clip(ctx: discord.ApplicationContext, route: str, title: str):
   parsed = get_route_and_time(route)
 
   if parsed is None:
+    logger.warning('clip_invalid_route user_id=%s input=%s', ctx.interaction.user.id, route)
     await ctx.respond(content='please enter a valid route or connect URL')
     return
 
   route, start, end = parsed
   if end - start > MAX_CLIP_LEN_S:
+    logger.warning('clip_too_long user_id=%s route=%s duration=%d', ctx.interaction.user.id, route, end - start)
     await ctx.edit(content=f'cannot make a clip longer than {MAX_CLIP_LEN_S}s')
     return
 
+  logger.info('clip_queued user_id=%s route=%s/%d/%d queue_size=%d', ctx.interaction.user.id, route, start, end, queue.qsize())
   await ctx.edit(content=f'queued request, {queue.qsize()} in line ahead')
   await queue.put(ClipRequest(
     ctx=ctx,
@@ -244,19 +260,23 @@ async def bookmarks(ctx: discord.ApplicationContext, route: str):
   route = get_route(route)
 
   if route is None:
+    logger.warning('bookmarks_invalid_route user_id=%s', ctx.interaction.user.id)
     await ctx.edit(content='please enter a valid route or connect URL')
     return
 
   try:
     flags = get_user_flags(route)
   except Exception as e:
+    logger.exception('bookmarks_fetch_failed user_id=%s route=%s', ctx.interaction.user.id, route)
     await ctx.edit(content=f'error getting bookmarks:\n\n```\n{str(e)}\n```')
     return
 
   if len(flags) == 0:
+    logger.info('bookmarks_none_found user_id=%s route=%s', ctx.interaction.user.id, route)
     await ctx.edit(content='no bookmarks found, try creating a /clip instead!')
     return
 
+  logger.info('bookmarks_found user_id=%s route=%s count=%d', ctx.interaction.user.id, route, len(flags))
   msg = f'{len(flags)} bookmark{"" if len(flags) == 1 else "s"} during route {format_route(route)}, processing {"it" if len(flags) == 1 else "them"}...\n'
 
   clip_details = []
@@ -278,6 +298,7 @@ async def bookmarks(ctx: discord.ApplicationContext, route: str):
 
 @bot.listen(once=True)
 async def on_ready():
+  logger.info('bot_ready workers=%d max_clip_len=%d', WORKERS, MAX_CLIP_LEN_S)
   for i in range(WORKERS):
     asyncio.create_task(worker(f'clip-worker-{i}'))
 
@@ -286,5 +307,6 @@ if __name__ == "__main__":
   discord_token = os.environ.get('DISCORD_TOKEN')
   if discord_token is None:
     raise EnvironmentError('Missing discord token')
+  logger.info('bot_starting')
   bot.run(discord_token)
 
