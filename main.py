@@ -103,6 +103,7 @@ class ClipRequest:
 
 bot = discord.Bot()
 queue = asyncio.Queue[ClipRequest]()
+pending_requests: list[ClipRequest] = []
 
 
 class VideoPreview(discord.ui.View):
@@ -198,10 +199,26 @@ async def process_clip(request: ClipRequest):
     await request.post_error(str(e))
 
 
+def queue_position_message(position: int) -> str:
+  if position == 0:
+    return 'queued, you are next'
+  return f'queued, {position} more ahead of you'
+
+
+async def update_queue_positions():
+  for i, req in enumerate(pending_requests):
+    try:
+      await req.ctx.edit(content=queue_position_message(i))
+    except Exception:
+      pass
+
+
 async def worker(name: str):
   logger.info('worker_started name=%s', name)
   while True:
     request = await queue.get()
+    pending_requests.remove(request)
+    await update_queue_positions()
     logger.debug('worker_dequeued worker=%s route=%s queue_size=%d', name, request.route_with_time, queue.qsize())
     try:
       await process_clip(request)
@@ -236,14 +253,16 @@ async def clip(ctx: discord.ApplicationContext, route: str, title: str):
     return
 
   logger.info('clip_queued user_id=%s route=%s/%d/%d queue_size=%d', ctx.interaction.user.id, route, start, end, queue.qsize())
-  await ctx.edit(content=f'queued request, {queue.qsize()} in line ahead')
-  await queue.put(ClipRequest(
+  request = ClipRequest(
     ctx=ctx,
     route=route,
     title=title,
     start_time=start,
     end_time=end,
-  ))
+  )
+  pending_requests.append(request)
+  await ctx.edit(content=queue_position_message(len(pending_requests) - 1))
+  await queue.put(request)
 
 
 @bot.command(
