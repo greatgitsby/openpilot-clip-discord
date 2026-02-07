@@ -202,6 +202,8 @@ async def worker(name: str):
     logger.debug('worker_dequeued worker=%s route=%s queue_size=%d', name, request.route_with_time, queue.qsize())
     try:
       await process_clip(request)
+    except Exception:
+      logger.exception('worker_exception worker=%s route=%s', name, request.route_with_time)
     finally:
       queue.task_done()
 
