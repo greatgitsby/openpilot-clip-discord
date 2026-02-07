@@ -19,8 +19,8 @@ MAX_CLIP_LEN_S = int(os.environ.get('MAX_CLIP_LEN', '30'))
 WORKERS = int(os.environ.get('WORKERS', '1'))
 
 link_regex = re.compile(r'https?://\S+')
-route_regex = re.compile(r'\S{16}\/\S{8}--\S{10}')
-route_with_time_regex = re.compile(r'\S{16}\/\S{8}--\S{10}\/\d+\/\d+')
+route_regex = re.compile(r'\S{16}\/\S+--\S+')
+route_with_time_regex = re.compile(r'\S{16}\/\S+--\S+\/\d+\/\d+')
 
 
 def format_route(route_with_time: str) -> str:
