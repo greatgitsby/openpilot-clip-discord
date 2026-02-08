@@ -2,6 +2,7 @@ import asyncio
 import discord
 import re
 import os
+import sys
 import logging
 from dotenv import load_dotenv
 
@@ -28,6 +29,7 @@ from openpilot.tools.lib.route import Route
 CONNECT_URL = 'https://connect.comma.ai'
 MAX_CLIP_LEN_S = int(os.environ.get('MAX_CLIP_LEN', '30'))
 WORKERS = int(os.environ.get('WORKERS', '1'))
+USE_XVFB = sys.platform == 'linux' and not os.environ.get('DISPLAY')
 
 link_regex = re.compile(r'https?://\S+')
 route_regex = re.compile(r'\S{16}\/\S+--\S+')
@@ -181,11 +183,12 @@ async def process_clip(request: ClipRequest):
   try:
     with TemporaryDirectory() as temp_dir:
       path = Path(os.path.join(temp_dir, request.output_file_name)).resolve()
-      args = ['openpilot/tools/clip/run.py', request.route_with_time, '-o', path, '-f', '9', '--big']
+      args = ['openpilot/tools/clip/run.py', request.route_with_time, '-o', path, '-f', '9']
       if request.title:
         args.extend(['-t', request.title])
-      logger.debug('subprocess_exec args=%s', args)
-      proc = await asyncio.create_subprocess_exec('openpilot/.venv/bin/python3', *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+      cmd = ['xvfb-run', '-a', 'openpilot/.venv/bin/python3'] if USE_XVFB else ['openpilot/.venv/bin/python3']
+      logger.debug('subprocess_exec cmd=%s args=%s xvfb=%s', cmd, args, USE_XVFB)
+      proc = await asyncio.create_subprocess_exec(*cmd, *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
 
       stdout, stderr = await proc.communicate()
       if proc.returncode != 0:
